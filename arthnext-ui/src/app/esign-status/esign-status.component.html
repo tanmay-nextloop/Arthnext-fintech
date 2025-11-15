@@ -1,0 +1,196 @@
+<div class="container">
+  <div class="header">
+    <button (click)="goBack()" class="btn-back">← Back</button>
+    <h2>eSign Document Status</h2>
+    <button (click)="refreshStatus()" class="btn-refresh" [disabled]="loading">
+      🔄 Refresh
+    </button>
+  </div>
+
+  <!-- Loading State -->
+  <div *ngIf="loading" class="loading-overlay">
+    <div class="spinner"></div>
+    <p>Loading status...</p>
+  </div>
+
+  <!-- Error State -->
+  <!-- <div *ngIf="error && !loading" class="error-box">
+    <h3>⚠️ Error</h3>
+    <p>{{ error }}</p>
+    <button (click)="fetchStatus()" class="btn btn-retry">Try Again</button>
+  </div> -->
+
+  <!-- Status Data -->
+  <div *ngIf="statusData && !loading" class="status-container">
+
+    <!-- Document Info Card -->
+    <div class="info-card">
+      <div class="card-header">
+        <h3> Document Information</h3>
+      </div>
+      <div class="card-body">
+        <div class="info-row">
+          <span class="label">eSign ID:</span>
+          <span class="value code">{{ statusData.esignId }}</span>
+        </div>
+        <div class="info-row">
+          <span class="label">Overall Status:</span>
+          <span class="value">
+            <span class="status-badge" [ngClass]="getStatusClass(statusData.status)">
+              {{ getStatusIcon(statusData.status) }} {{ statusData.status | uppercase }}
+            </span>
+          </span>
+        </div>
+        <div class="info-row">
+          <span class="label">Total Signers:</span>
+          <span class="value">{{ statusData.signers.length }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Next Pending Signer -->
+    <div *ngIf="statusData.nextPendingSigner" class="next-signer-card">
+      <div class="card-header">
+        <h3> Next Pending Signer</h3>
+      </div>
+      <div class="card-body highlight">
+        <div class="signer-info">
+          <div class="signer-details">
+            <div class="signer-name">{{ statusData.nextPendingSigner.name }}</div>
+            <div class="signer-id">ID: {{ statusData.nextPendingSigner.id }}</div>
+          </div>
+          <div class="signer-status">
+            <span class="status-badge" [ngClass]="getStatusClass(statusData.nextPendingSigner.status)">
+              {{ getStatusIcon(statusData.nextPendingSigner.status) }} {{ statusData.nextPendingSigner.status |
+              uppercase }}
+            </span>
+          </div>
+        </div>
+        <button (click)="verifySignature(statusData.nextPendingSigner)" class="btn btn-verify" [disabled]="loading">
+          ✓ Verify Signature
+        </button>
+      </div>
+    </div>
+
+    <!-- All Signers List -->
+    <!-- <div class="signers-section">
+      
+      <div class="section-header">
+        <h3>👥 All Signers ({{ statusData.signers.length }})</h3>
+      </div>
+
+      <div class="signers-grid">
+        <div 
+          *ngFor="let signer of statusData.signers; let i = index" 
+          class="signer-card"
+          [class.is-next]="statusData.nextPendingSigner?.id === signer.id"
+        >
+          <div class="signer-number">#{{ i + 1 }}</div>
+          
+          <div class="signer-content">
+            <div class="signer-header">
+              <div class="signer-name">{{ signer.name }}</div>
+              <span class="status-badge" [ngClass]="getStatusClass(signer.status)">
+                {{ getStatusIcon(signer.status) }} {{ signer.status | uppercase }}
+              </span>
+            </div>
+            
+            <div class="signer-id">ID: {{ signer.id }}</div>
+            
+            <div *ngIf="statusData.nextPendingSigner?.id === signer.id" class="next-badge">
+              ⭐ Next in Queue
+            </div>
+
+            <button 
+              *ngIf="signer.status === 'pending'"
+              (click)="verifySignature(signer)" 
+              class="btn btn-verify-small"
+              [disabled]="loading"
+            >
+              ✓ Verify
+            </button>
+
+            <div *ngIf="signer.status === 'signed'" class="completed-badge">
+              ✅ Completed
+            </div>
+
+            <div *ngIf="signer.status === 'rejected'" class="rejected-badge">
+              ❌ Rejected
+            </div>
+          </div>
+        </div>
+      </div>
+    </div> -->
+
+
+
+    <div class="signers-section">
+      <div class="section-header">
+        <h3> All Signers ({{ statusData.signers.length }})</h3>
+      </div>
+
+      <div class="signers-grid">
+        <div *ngFor="let signer of statusData.signers; let i = index" class="signer-card"
+          [class.is-next]="statusData.nextPendingSigner?.id === signer.id">
+          <div class="signer-number">#{{ i + 1 }}</div>
+
+          <div class="signer-content">
+            <div class="signer-header">
+              <div class="signer-name">{{ signer.name }}</div>
+              <span class="status-badge" [ngClass]="getStatusClass(signer.status)">
+                {{ getStatusIcon(signer.status) }} {{ signer.status | uppercase }}
+              </span>
+            </div>
+
+            <div class="signer-id">ID: {{ signer.id }}</div>
+
+            <div *ngIf="statusData.nextPendingSigner?.id === signer.id" class="next-badge">
+              ⭐ Next in Queue
+            </div>
+
+            <!-- Show Verify button only if signer is 'pending' AND the nextPendingSigner -->
+            <button *ngIf="signer.status === 'pending' && statusData.nextPendingSigner?.id === signer.id"
+              (click)="verifySignature(signer)" class="btn btn-verify-small" [disabled]="loading">
+              ✓ Verify
+            </button>
+
+                 <!-- Display 'Completed' badge if status is 'signed' -->
+            <div *ngIf="signer.status === 'pending' && statusData.nextPendingSigner?.id !== signer.id" class="to-be-next-badge">
+               To be Next
+            </div>
+
+            <!-- Display 'Completed' badge if status is 'signed' -->
+            <div *ngIf="signer.status === 'signed'" class="completed-badge">
+              ✅ Completed
+            </div>    
+
+            <!-- Display 'Rejected' badge if status is 'rejected' -->
+            <div *ngIf="signer.status === 'rejected'" class="rejected-badge">
+              ❌ Rejected
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Summary Stats -->
+    <!-- <div class="stats-section">
+      <div class="stat-card">
+        <div class="stat-icon">⏳</div>
+        <div class="stat-value">{{ (statusData.signers | filterByStatus:'pending').length }}</div>
+        <div class="stat-label">Pending</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">✅</div>
+        <div class="stat-value">{{ (statusData.signers | filterByStatus:'signed').length }}</div>
+        <div class="stat-label">Signed</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">❌</div>
+        <div class="stat-value">{{ (statusData.signers | filterByStatus:'rejected').length }}</div>
+        <div class="stat-label">Rejected</div>
+      </div>
+    </div> -->
+
+  </div>
+</div>

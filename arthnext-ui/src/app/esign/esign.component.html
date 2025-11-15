@@ -1,0 +1,153 @@
+<div class="max-w-3xl mx-auto p-6 bg-white shadow-md rounded-md mt-10">
+  <h2 class="text-2xl font-bold mb-6 text-center text-gray-800">ESign Document Submission</h2>
+
+  <form (ngSubmit)="submitForm()" #esignForm="ngForm" class="space-y-6">
+    
+    <!-- Client Details -->
+    <div class="space-y-2">
+      <label class="block text-gray-700 font-medium">Client ID:</label>
+      <input 
+        type="text" 
+        [(ngModel)]="formData.clientId" 
+        name="clientId" 
+        required 
+        class="w-full border border-gray-300 rounded-md p-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+      />
+    </div>
+
+    <div class="space-y-2">
+      <label class="block text-gray-700 font-medium">Client Webhook URL:</label>
+      <input 
+        type="text" 
+        [(ngModel)]="formData.clientWebhookUrl" 
+        name="clientWebhookUrl" 
+        required 
+        class="w-full border border-gray-300 rounded-md p-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+      />
+    </div>
+
+    <!-- Metadata -->
+    <div class="space-y-2">
+      <label class="block text-gray-700 font-medium">Document Type:</label>
+      <input 
+        type="text" 
+        [(ngModel)]="formData.metadata.documentType" 
+        name="documentType" 
+        class="w-full border border-gray-300 rounded-md p-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+      />
+    </div>
+
+    <div class="space-y-2">
+      <label class="block text-gray-700 font-medium">Priority:</label>
+      <input 
+        type="text" 
+        [(ngModel)]="formData.metadata.priority" 
+        name="priority" 
+        class="w-full border border-gray-300 rounded-md p-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+      />
+    </div>
+
+    <!-- Signer Details -->
+    <div class="space-y-4">
+      <h3 class="text-xl font-semibold text-gray-800">Signer Details</h3>
+
+      <div class="space-y-2">
+        <label class="block text-gray-700 font-medium">Name:</label>
+        <input 
+          type="text" 
+          [(ngModel)]="formData.signers[0].name" 
+          name="signerName" 
+          class="w-full border border-gray-300 rounded-md p-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+        />
+      </div>
+
+      <div class="space-y-2">
+        <label class="block text-gray-700 font-medium">Aadhaar:</label>
+        <input 
+          type="text" 
+          [(ngModel)]="formData.signers[0].aadhaar" 
+          name="aadhaar" 
+          class="w-full border border-gray-300 rounded-md p-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+        />
+      </div>
+
+      <!-- <div class="space-y-2">
+        <label class="block text-gray-700 font-medium">Pages (comma-separated):</label>
+        <input 
+          type="text" 
+          [(ngModel)]="signerPages" 
+          name="pages" 
+          class="w-full border border-gray-300 rounded-md p-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+        />
+      </div>
+
+      <div class="space-y-2">
+        <label class="block text-gray-700 font-medium">Coordinates (x, y, width, height):</label>
+        <input 
+          type="text" 
+          [(ngModel)]="signerCoordinates" 
+          name="coordinates" 
+          placeholder="x,y,width,height"
+          class="w-full border border-gray-300 rounded-md p-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+        />
+      </div> -->
+    </div>
+
+     <!-- PDF Upload & Area Selector Section -->
+    <div class="space-y-6">
+      <h3 class="text-xl font-semibold text-gray-800">PDF Upload </h3>
+
+      <div class="upload-section">
+        <input
+          type="file"
+          accept="application/pdf"
+          (change)="onFileChange($event)"
+          #fileInput
+          class="file-input"
+        />
+      </div>
+
+      <div *ngIf="loading" class="loading">
+        Loading PDF...
+      </div>
+
+      <div class="pdf-container" #pdfContainer></div>
+
+      <div *ngIf="selectedPageNumber" class="selection-info">
+        <h3>Selected Page: {{ selectedPageNumber }}</h3>
+        <p class="instruction">
+          select an area for Signature
+        </p>
+      </div>
+
+      <canvas
+        #signCanvas
+        class="sign-canvas"
+        (mousedown)="onMouseDown($event)"
+        (mousemove)="onMouseMove($event)"
+        (mouseup)="onMouseUp($event)"
+        (mouseleave)="onMouseLeave()"
+      ></canvas>
+
+      <!-- <div *ngIf="selectedArea" class="selected-info">
+        <h4>Selected Area Coordinates:</h4>
+        <div class="coords">
+          <div><strong>X:</strong> {{ selectedArea.x | number:'1.0-0' }}px</div>
+          <div><strong>Y:</strong> {{ selectedArea.y | number:'1.0-0' }}px</div>
+          <div><strong>Width:</strong> {{ selectedArea.width | number:'1.0-0' }}px</div>
+          <div><strong>Height:</strong> {{ selectedArea.height | number:'1.0-0' }}px</div>
+        </div>
+      </div> -->
+    </div>
+
+    <!-- Submit Button -->
+    <div class="text-center">
+      <button 
+        type="submit" 
+        class="bg-blue-600 text-white font-semibold py-2 px-6 rounded-md hover:bg-blue-700 transition-colors"
+      >
+        Submit
+      </button>
+    </div>
+  </form>
+</div>

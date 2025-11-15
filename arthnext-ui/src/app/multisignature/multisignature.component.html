@@ -1,0 +1,248 @@
+<div class="container">
+  <h2>Multi-Signer PDF</h2>
+
+  <!-- Step 0: Document Metadata -->
+  <div class="step-section metadata-section">
+    <h3> Document Information</h3>
+    <div class="metadata-form">
+      <div class="form-group">
+        <label for="docType">Document Type *</label>
+        <input
+          id="docType"
+          type="text"
+          [(ngModel)]="documentType"
+          placeholder="e.g., Contract, Agreement, Invoice"
+          class="form-control"
+        />
+      </div>
+      <div class="form-group">
+        <label for="priority">Priority *</label>
+        <select id="priority" [(ngModel)]="priority" class="form-control">
+          <option value="">Select Priority</option>
+          <option value="high">High</option>
+          <option value="medium">Medium</option>
+          <option value="low">Low</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 1: Upload PDF -->
+  <div class="step-section">
+    <h3>Upload PDF Document</h3>
+    <div class="upload-section">
+      <input
+        type="file"
+        accept="application/pdf"
+        (change)="onFileChange($event)"
+        #fileInput
+        class="file-input"
+      />
+      <p *ngIf="uploadedFile" class="file-name">Selected: {{ uploadedFile.name }}</p>
+    </div>
+
+    <div *ngIf="loading" class="loading">
+      Loading PDF...
+    </div>
+  </div>
+
+  <!-- Step 2: Add Users -->
+  <div *ngIf="pdfDoc && !loading" class="step-section">
+    <h3> Manage Signers</h3>
+    
+    <button 
+      *ngIf="!showAddUserForm" 
+      (click)="showAddUserForm = true" 
+      class="btn btn-add-user"
+    >
+      ➕ Add New Signer
+    </button>
+
+    <div *ngIf="showAddUserForm" class="add-user-form">
+      <input
+        type="text"
+        [(ngModel)]="newUserName"
+        placeholder="Full name (Aadhar holder)"
+        class="user-input"
+      />
+      <input
+        type="text"
+        [(ngModel)]="newUserAadhar"
+        placeholder="Aadhar Number"
+        class="user-input"
+      />
+      <div class="form-actions">
+        <button (click)="addUser()" class="btn btn-save">✓ Add Signer</button>
+        <button (click)="showAddUserForm = false; newUserName = ''; newUserAadhar = ''" class="btn btn-cancel">✕ Cancel</button>
+      </div>
+    </div>
+
+    <div *ngIf="users.length > 0" class="users-list">
+      <div 
+        *ngFor="let user of users" 
+        class="user-card"
+        [class.selected]="selectedUser?.id === user.id"
+        [style.border-left-color]="user.color"
+        (click)="selectUser(user)"
+      >
+        <div class="user-details">
+          <div class="user-name" [style.color]="user.color">{{ user.name }}</div>
+          <div *ngIf="user.email" class="user-email">Aadhar: {{ user.email }}</div>
+        </div>
+        <div class="user-actions">
+          <span *ngIf="getUserSignatureCount(user.id) > 0" class="signed-badge">
+            ✓ {{ getUserSignatureCount(user.id) }} Sign{{ getUserSignatureCount(user.id) > 1 ? 's' : '' }}
+          </span>
+          <button (click)="removeUser(user.id); $event.stopPropagation()" class="btn-remove-user">✕</button>
+        </div>
+      </div>
+    </div>
+
+    <div *ngIf="users.length === 0" class="empty-state">
+      <p>No signers added yet. Click "Add New Signer" to start.</p>
+    </div>
+  </div>
+
+  <!-- Step 3: PDF Thumbnails -->
+  <div *ngIf="pdfDoc && !loading" class="step-section">
+    <h3> Select a Page</h3>
+    <div class="pdf-container" #pdfContainer></div>
+  </div>
+
+  <!-- Step 4: Draw Signature Area -->
+  <div *ngIf="selectedUser && selectedPageNumber" class="step-section">
+    <h3> Draw Signature Area</h3>
+    <div class="current-user-info">
+      <span class="user-badge" [style.background-color]="selectedUser.color">
+        {{ selectedUser.name }}
+      </span>
+      <span class="page-badge">Page {{ selectedPageNumber }}</span>
+      <p class="instruction">
+        <strong>Instructions:</strong> Drag to create a signature box. 
+        Click on any existing signature box to remove it.
+      </p>
+    </div>
+  </div>
+
+  <canvas
+    #signCanvas
+    class="sign-canvas"
+    [class.hidden]="!selectedPageNumber"
+    (mousedown)="onMouseDown($event)"
+    (mousemove)="onMouseMove($event)"
+    (mouseup)="onMouseUp($event)"
+    (mouseleave)="onMouseLeave()"
+    (click)="onCanvasClick($event)"
+  ></canvas>
+
+  <!-- Signatures Summary - Organized by Page with Dropdown -->
+  <div *ngIf="signatures.length > 0" class="signatures-section">
+    <div class="section-header" (click)="toggleSignaturesDropdown()" style="cursor: pointer;">
+      <h3>
+        <span class="dropdown-arrow" [class.open]="signaturesDropdownOpen">▶</span>
+         Signature Areas ({{ signatures.length }} total)
+      </h3>
+      <div class="actions" (click)="$event.stopPropagation()">
+        <button (click)="clearAllSignatures()" class="btn btn-clear">
+           Clear All
+        </button>
+      </div>
+    </div>
+    
+    <!-- Collapsible Content -->
+    <div class="signatures-content" [class.collapsed]="!signaturesDropdownOpen">
+      <!-- Group by Page -->
+      <div *ngFor="let page of getPagesWithSignatures()" class="page-group">
+        <h4 class="page-group-header">
+          📄 Page {{ page }} 
+          <span class="page-count">({{ getSignaturesByPage().get(page)?.length }} signature(s))</span>
+        </h4>
+        
+        <div class="signatures-grid">
+          <div 
+            *ngFor="let sig of getSignaturesByPage().get(page)" 
+            class="signature-card-compact" 
+            [style.border-left-color]="sig.color"
+          >
+            <div class="sig-content">
+              <div class="sig-user" [style.color]="sig.color">
+                <span class="user-icon">👤</span>
+                <strong>{{ sig.userName }}</strong>
+              </div>
+              <div class="sig-coords">
+                Position: ({{ sig.area.x | number:'1.0-0' }}, {{ sig.area.y | number:'1.0-0' }})
+                • Size: {{ sig.area.width | number:'1.0-0' }} × {{ sig.area.height | number:'1.0-0' }}
+              </div>
+            </div>
+            <button 
+              (click)="removeSignature(sig.signatureId)" 
+              class="btn-remove-compact"
+              title="Remove this signature"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Submit Section -->
+  <div *ngIf="uploadedFile && users.length > 0" class="submit-section">
+    <button 
+      (click)="submitToAPI()" 
+      [disabled]="submitting || !documentType || !priority || signatures.length === 0"
+      class="btn btn-submit"
+    >
+      <span *ngIf="!submitting">Submit for eSign</span>
+      <span *ngIf="submitting">⏳ Submitting...</span>
+    </button>
+    <p *ngIf="signatures.length === 0" class="submit-warning">
+      ⚠️ Please add at least one signature area before submitting
+    </p>
+  </div>
+
+  <!-- Custom Modal -->
+  <div *ngIf="showModal" class="modal-overlay" (click)="closeModal()">
+    <div class="modal-container" (click)="$event.stopPropagation()">
+      <div class="modal-header" [ngClass]="{
+        'modal-info': modalConfig.type === 'info',
+        'modal-warning': modalConfig.type === 'warning',
+        'modal-error': modalConfig.type === 'error',
+        'modal-confirm': modalConfig.type === 'confirm'
+      }">
+        <div class="modal-icon">
+          <span *ngIf="modalConfig.type === 'info'">ℹ️</span>
+          <span *ngIf="modalConfig.type === 'warning'">⚠️</span>
+          <span *ngIf="modalConfig.type === 'error'">❌</span>
+          <span *ngIf="modalConfig.type === 'confirm'">❓</span>
+        </div>
+        <h3>{{ modalConfig.title }}</h3>
+      </div>
+      <div class="modal-body">
+        <p>{{ modalConfig.message }}</p>
+      </div>
+      <div class="modal-footer">
+        <button 
+          *ngIf="modalConfig.type === 'confirm'" 
+          (click)="modalConfig.onCancel()" 
+          class="btn-modal btn-cancel-modal"
+        >
+          {{ modalConfig.cancelText }}
+        </button>
+        <button 
+          (click)="modalConfig.onConfirm()" 
+          class="btn-modal btn-confirm-modal"
+          [ngClass]="{
+            'btn-info': modalConfig.type === 'info',
+            'btn-warning': modalConfig.type === 'warning',
+            'btn-error': modalConfig.type === 'error',
+            'btn-confirm': modalConfig.type === 'confirm'
+          }"
+        >
+          {{ modalConfig.confirmText }}
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

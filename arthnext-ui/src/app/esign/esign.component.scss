@@ -1,0 +1,48 @@
+.pdf-preview {
+  margin-top: 20px;
+}
+
+.pdf-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+  justify-content: center;
+  background: #f9f9f9;
+}
+
+.pdf-page {
+  position: relative;
+  cursor: pointer;
+  border: 2px solid #ddd;
+  padding: 5px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.pdf-page:hover {
+  border-color: #007bff;
+}
+
+.selected-overlay {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  background: rgba(0, 123, 255, 0.6);
+  color: white;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.pdf-canvas {
+  width: 100%;
+  max-width: 200px;
+  height: auto;
+  border-radius: 8px;
+}
+.selected {
+  border: 3px solid red;  // or any color of your choice
+  box-shadow: 0 0 10px rgba(255, 0, 0, 0.5);  // optional shadow effect
+}

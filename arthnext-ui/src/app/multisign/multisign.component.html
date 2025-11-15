@@ -1,0 +1,98 @@
+<div class="container">
+  <h2>Multi-User PDF Signature Area Selector</h2>
+
+  <div class="upload-section">
+    <input
+      type="file"
+      accept="application/pdf"
+      (change)="onFileChange($event)"
+      #fileInput
+      class="file-input"
+    />
+  </div>
+
+  <div *ngIf="loading" class="loading">
+    Loading PDF...
+  </div>
+
+  <div class="pdf-container" #pdfContainer></div>
+
+  <div *ngIf="pdfDoc && !loading" class="user-input-section">
+    <h3>Add User Signature Area</h3>
+    <div class="user-form">
+      <input
+        type="text"
+        [(ngModel)]="currentUserName"
+        placeholder="Enter user name (e.g., John Doe)"
+        class="user-input"
+      />
+      <p class="instruction">
+        1. Enter user name above<br>
+        2. Select a page from thumbnails<br>
+        3. Draw a rectangle on the canvas for signature area
+      </p>
+    </div>
+  </div>
+
+  <div *ngIf="selectedPageNumber" class="selection-info">
+    <h3>Selected Page: {{ selectedPageNumber }}</h3>
+    <p class="instruction">
+      <strong>Draw a rectangle</strong> for <strong>{{ currentUserName || 'User' }}</strong>'s signature area
+    </p>
+  </div>
+
+  <canvas
+    #signCanvas
+    class="sign-canvas"
+    (mousedown)="onMouseDown($event)"
+    (mousemove)="onMouseMove($event)"
+    (mouseup)="onMouseUp($event)"
+    (mouseleave)="onMouseLeave()"
+  ></canvas>
+
+  <div *ngIf="users.length > 0" class="signatures-list">
+    <div class="list-header">
+      <h4>Signature Areas ({{ users.length }})</h4>
+      <div class="actions">
+        <button (click)="exportCoordinates()" class="btn btn-export">
+          📥 Export Coordinates
+        </button>
+        <button (click)="clearAllSignatures()" class="btn btn-clear">
+          🗑️ Clear All
+        </button>
+      </div>
+    </div>
+    
+    <div class="signatures-grid">
+      <div *ngFor="let user of users" class="signature-card" [style.border-left-color]="user.color">
+        <div class="user-info">
+          <div class="user-name" [style.color]="user.color">{{ user.userName }}</div>
+          <div class="page-info">Page {{ user.pageNumber }}</div>
+        </div>
+        <div class="coords">
+          <div class="coord-item">
+            <span class="label">X:</span>
+            <span class="value">{{ user.area.x | number:'1.0-0' }}px</span>
+          </div>
+          <div class="coord-item">
+            <span class="label">Y:</span>
+            <span class="value">{{ user.area.y | number:'1.0-0' }}px</span>
+          </div>
+          <div class="coord-item">
+            <span class="label">W:</span>
+            <span class="value">{{ user.area.width | number:'1.0-0' }}px</span>
+          </div>
+          <div class="coord-item">
+            <span class="label">H:</span>
+            <span class="value">{{ user.area.height | number:'1.0-0' }}px</span>
+          </div>
+        </div>
+        <button (click)="removeSignature(user.userId)" class="btn-remove">✕</button>
+      </div>
+    </div>
+  </div>
+
+  <div *ngIf="users.length === 0 && pdfDoc && !loading" class="empty-state">
+    <p>No signature areas added yet. Enter a user name and draw rectangles on the PDF!</p>
+  </div>
+</div>
