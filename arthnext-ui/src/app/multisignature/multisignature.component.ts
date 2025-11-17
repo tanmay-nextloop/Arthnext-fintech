@@ -9,6 +9,7 @@ import { ModalComponent } from '../shared/components/modal/modal.component';
 import { ModalService } from '../shared/services/modal.service';
 import { PdfViewerComponent } from '../shared/components/pdf-viewer/pdf-viewer.component';
 import { User, SignatureArea } from '../shared/models/signature.models';
+import { SignatureListComponent } from '../shared/components/signature-list/'
 
 @Component({
   selector: 'app-multisignature',
@@ -18,7 +19,8 @@ import { User, SignatureArea } from '../shared/models/signature.models';
     FormsModule,
     HttpClientModule,
     ModalComponent,       // ← Shared component
-    PdfViewerComponent    // ← Shared component
+    PdfViewerComponent,    // ← Shared component
+    SignatureListComponent
   ],
   templateUrl: './multisignature.component.html',
   styleUrls: ['./multisignature.component.scss']
@@ -45,20 +47,20 @@ export class MultisignatureComponent {
 
   // Colors
   private colors = [
-    '#ff0000', '#00ff00', '#0000ff', 
-    '#ff00ff', '#ffff00', '#00ffff', 
+    '#ff0000', '#00ff00', '#0000ff',
+    '#ff00ff', '#ffff00', '#00ffff',
     '#ff8800', '#8800ff'
   ];
   private colorIndex = 0;
 
   // API
-  initiateAPI = 'https://your-api.com/api/v1/esign/initiate';
+  initiateAPI = 'https://peakily-idioplasmatic-kimbra.ngrok-free.dev/api/v1/esign/initiate';
 
   constructor(
     private modalService: ModalService,  // ← Injected service
     private http: HttpClient,
     private router: Router
-  ) {}
+  ) { }
 
   // File handling
   onFileChange(event: Event) {
@@ -130,6 +132,15 @@ export class MultisignatureComponent {
       }
     );
   }
+  handleClearAll() {
+    this.modalService.showConfirm(
+      'Clear All',
+      'Remove all signatures?',
+      () => this.signatures = []
+    );
+  }
+
+
 
   onPdfError(error: string) {
     this.modalService.showAlert('Error', error, 'error');
@@ -176,6 +187,9 @@ export class MultisignatureComponent {
     this.signaturesDropdownOpen = !this.signaturesDropdownOpen;
   }
 
+  handleListRemove(signatureId: string) {
+    this.removeSignature(signatureId);
+  }
   // API Submission
   async submitToAPI() {
     // Validation
@@ -248,6 +262,7 @@ export class MultisignatureComponent {
       );
 
       const payload = {
+
         clientId: 'ARTHNEXT_UAT_Profile',
         clientWebhookUrl: 'https://your-webhook.com/callback',
         metadata: {
@@ -278,7 +293,9 @@ export class MultisignatureComponent {
       }
 
       tab1.document.write('<p>Preparing eSign document...</p>');
-
+      this.router.navigate(['/esignStatus'], {
+        queryParams: { esignId: "fgdghd" }
+      });
       this.http.post(this.initiateAPI, formData).subscribe({
         next: (res: any) => {
           this.submitting = false;
@@ -308,4 +325,7 @@ export class MultisignatureComponent {
       this.submitting = false;
     }
   }
+
+
+
 }

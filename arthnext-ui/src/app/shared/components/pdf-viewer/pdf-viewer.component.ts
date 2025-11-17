@@ -42,17 +42,31 @@ export interface SignatureArea {
       <!-- PDF Thumbnails -->
       <div class="pdf-thumbnails" #pdfContainer></div>
 
-      <!-- Main Canvas -->
-      <canvas
-        #signCanvas
-        class="sign-canvas"
-        [class.hidden]="!selectedPageNumber"
-        (mousedown)="onMouseDown($event)"
-        (mousemove)="onMouseMove($event)"
-        (mouseup)="onMouseUp($event)"
-        (mouseleave)="onMouseLeave()"
-        (click)="onCanvasClick($event)"
-      ></canvas>
+      <!-- Main Canvas Container with Overlay -->
+      <div class="canvas-wrapper" [class.hidden]="!selectedPageNumber">
+        <canvas
+          #signCanvas
+          class="sign-canvas"
+          (mousedown)="onMouseDown($event)"
+          (mousemove)="onMouseMove($event)"
+          (mouseup)="onMouseUp($event)"
+          (mouseleave)="onMouseLeave()"
+        ></canvas>
+        
+        <!-- Remove Buttons Overlay -->
+        <div class="buttons-overlay">
+          <button
+            *ngFor="let sig of getPageSignatures()"
+            class="remove-btn"
+            [style.left.px]="getRemoveButtonPosition(sig).x"
+            [style.top.px]="getRemoveButtonPosition(sig).y"
+            (click)="onRemoveClick(sig.signatureId)"
+            title="Remove signature"
+          >
+            ✕
+          </button>
+        </div>
+      </div>
 
       <div *ngIf="loading" class="loading">Loading PDF...</div>
     </div>
@@ -75,6 +89,16 @@ export interface SignatureArea {
       margin-bottom: 20px;
     }
 
+    .canvas-wrapper {
+      position: relative;
+      display: inline-block;
+      margin-bottom: 20px;
+    }
+
+    .canvas-wrapper.hidden {
+      display: none;
+    }
+
     .sign-canvas {
       display: block;
       border: 3px solid #2c3e50;
@@ -85,8 +109,46 @@ export interface SignatureArea {
       background: white;
     }
 
-    .sign-canvas.hidden {
-      display: none;
+    .buttons-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    .remove-btn {
+      position: absolute;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: #e74c3c;
+      color: white;
+      border: 2px solid white;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      transition: all 0.2s;
+      pointer-events: auto;
+      z-index: 10;
+      line-height: 1;
+      padding: 0;
+      transform: translate(-50%, -50%);
+    }
+
+    .remove-btn:hover {
+      background: #c0392b;
+      transform: translate(-50%, -50%) scale(1.15) rotate(90deg);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    }
+
+    .remove-btn:active {
+      transform: translate(-50%, -50%) scale(1.05);
     }
 
     .loading {
@@ -118,16 +180,15 @@ export class PdfViewerComponent implements AfterViewInit, OnChanges {
   public pdfDoc: any = null;
   selectedPageNumber: number | null = null;
   loading = false;
-  
   private signCtx: CanvasRenderingContext2D | null = null;
   private currentRenderTask: any = null;
   private isDrawing = false;
   private justFinishedDrawing = false;
   private startX = 0;
   private startY = 0;
-
+  
   constructor(@Inject(PLATFORM_ID) private platformId: Object) {}
-
+  
   ngAfterViewInit() {
     if (isPlatformBrowser(this.platformId)) {
       this.loadPdfJs();
@@ -138,7 +199,8 @@ export class PdfViewerComponent implements AfterViewInit, OnChanges {
     if (changes['file'] && changes['file'].currentValue) {
       this.loadPdfFile(changes['file'].currentValue);
     }
-
+    
+    console.log("Render component")
     if (changes['signatures'] && this.selectedPageNumber) {
       this.renderSelectedPageWithAreas();
     }
@@ -448,27 +510,30 @@ export class PdfViewerComponent implements AfterViewInit, OnChanges {
     }
   }
 
-  onCanvasClick(event: MouseEvent) {
-    if (this.isDrawing || this.justFinishedDrawing) return;
-    if (!this.selectedPageNumber || !this.signCanvas) return;
+  onRemoveClick(signatureId: string) {
+    this.signatureRemoveRequested.emit(signatureId);
+  }
 
+  getPageSignatures(): SignatureArea[] {
+    if (!this.selectedPageNumber) return [];
+    return this.signatures.filter(s => s.pageNumber === this.selectedPageNumber);
+  }
+
+  getRemoveButtonPosition(sig: SignatureArea): { x: number; y: number } {
+    if (!this.signCanvas) return { x: 0, y: 0 };
+    
     const canvas = this.signCanvas.nativeElement;
     const rect = canvas.getBoundingClientRect();
-
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-
-    const clickX = (event.clientX - rect.left) * scaleX;
-    const clickY = (event.clientY - rect.top) * scaleY;
-
-    const pageSignatures = this.signatures.filter(s => s.pageNumber === this.selectedPageNumber);
-
-    for (const sig of pageSignatures) {
-      if (this.isPointInRectangle(clickX, clickY, sig.area)) {
-        this.signatureRemoveRequested.emit(sig.signatureId);
-        return;
-      }
-    }
+    
+    // Scale from canvas coordinates to display coordinates
+    const scaleX = rect.width / canvas.width;
+    const scaleY = rect.height / canvas.height;
+    
+    // Position button at top-right corner of signature
+    const x = (sig.area.x + sig.area.width) * scaleX;
+    const y = sig.area.y * scaleY;
+    
+    return { x, y };
   }
 
   private checkOverlap(newArea: Rectangle, pageNumber: number): boolean {
@@ -491,12 +556,5 @@ export class PdfViewerComponent implements AfterViewInit, OnChanges {
       rect2.y + rect2.height < rect1.y;
 
     return !noOverlap;
-  }
-
-  private isPointInRectangle(x: number, y: number, rect: Rectangle): boolean {
-    return x >= rect.x &&
-           x <= rect.x + rect.width &&
-           y >= rect.y &&
-           y <= rect.y + rect.height;
   }
 }

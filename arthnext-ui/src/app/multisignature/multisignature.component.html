@@ -43,7 +43,7 @@
 
   <!-- Step 2: Add Users -->
   <div *ngIf="uploadedFile" class="step-section">
-    <h3>👥 Manage Signers</h3>
+    <h3> Manage Signers</h3>
     
     <button 
       *ngIf="!showAddUserForm" 
@@ -124,7 +124,16 @@
   </div>
 
   <!--  PDF VIEWER COMPONENT  -->
-  <app-pdf-viewer
+  <!-- <app-pdf-viewer
+    [file]="uploadedFile"
+    [selectedUser]="selectedUser"
+    [signatures]="signatures"
+    (pageSelected)="onPageSelected($event)"
+    (signatureAdded)="onSignatureAdded($event)"
+    (signatureRemoveRequested)="onSignatureRemoveRequested($event)"
+    (errorOccurred)="onPdfError($event)"
+  ></app-pdf-viewer> -->
+    <app-pdf-viewer
     [file]="uploadedFile"
     [selectedUser]="selectedUser"
     [signatures]="signatures"
@@ -135,7 +144,7 @@
   ></app-pdf-viewer>
 
   <!-- Signatures Summary -->
-  <div *ngIf="signatures.length > 0" class="signatures-section">
+  <!-- <div *ngIf="signatures.length > 0" class="signatures-section">
     <div 
       class="section-header" 
       (click)="toggleSignaturesDropdown()" 
@@ -198,8 +207,13 @@
         </div>
       </div>
     </div>
-  </div>
+  </div> -->
 
+ <app-signature-list
+        [signatures]="signatures"
+        (signatureRemoved)="handleListRemove($event)"
+        (clearAllRequested)="handleClearAll()"
+      ></app-signature-list>
   <!-- Submit Section -->
   <div *ngIf="uploadedFile && users.length > 0" class="submit-section">
     <button 
@@ -211,7 +225,7 @@
       <span *ngIf="submitting"> Submitting...</span>
     </button>
     <p *ngIf="signatures.length === 0" class="submit-warning">
-      ⚠️ Please add at least one signature area
+       Please add at least one signature area
     </p>
   </div>
 
