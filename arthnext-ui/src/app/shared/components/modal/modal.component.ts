@@ -1,5 +1,5 @@
 // modal.component.ts
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Subscription } from 'rxjs';
 import { ModalService, ModalConfig } from '../../services/modal.service';
@@ -9,44 +9,34 @@ import { ModalService, ModalConfig } from '../../services/modal.service';
   standalone: true,
   imports: [CommonModule],
   template: `
-    <div *ngIf="showModal" class="modal-overlay" (click)="onOverlayClick()">
+    <div *ngIf="showModal()" class="modal-overlay" (click)="onOverlayClick()">
       <div class="modal-container" (click)="$event.stopPropagation()">
-        <div class="modal-header" [ngClass]="{
-          'modal-info': modalConfig.type === 'info',
-          'modal-warning': modalConfig.type === 'warning',
-          'modal-error': modalConfig.type === 'error',
-          'modal-confirm': modalConfig.type === 'confirm'
-        }">
+        <div class="modal-header" [ngClass]="headerClass()">
           <div class="modal-icon">
-            <span *ngIf="modalConfig.type === 'info'">ℹ️</span>
-            <span *ngIf="modalConfig.type === 'warning'">⚠️</span>
-            <span *ngIf="modalConfig.type === 'error'">❌</span>
-            <span *ngIf="modalConfig.type === 'confirm'">❓</span>
+            <span *ngIf="modalConfig().type === 'info'">ℹ️</span>
+            <span *ngIf="modalConfig().type === 'warning'">⚠️</span>
+            <span *ngIf="modalConfig().type === 'error'">❌</span>
+            <span *ngIf="modalConfig().type === 'confirm'">❓</span>
           </div>
-          <h3>{{ modalConfig.title }}</h3>
+          <h3>{{ modalConfig().title }}</h3>
         </div>
         <div class="modal-body">
-          <p>{{ modalConfig.message }}</p>
+          <p>{{ modalConfig().message }}</p>
         </div>
         <div class="modal-footer">
           <button 
-            *ngIf="modalConfig.type === 'confirm'" 
-            (click)="modalConfig.onCancel()" 
+            *ngIf="showCancelButton()" 
+            (click)="modalConfig().onCancel()" 
             class="btn-modal btn-cancel-modal"
           >
-            {{ modalConfig.cancelText }}
+            {{ modalConfig().cancelText }}
           </button>
           <button 
-            (click)="modalConfig.onConfirm()" 
+            (click)="modalConfig().onConfirm()" 
             class="btn-modal btn-confirm-modal"
-            [ngClass]="{
-              'btn-info': modalConfig.type === 'info',
-              'btn-warning': modalConfig.type === 'warning',
-              'btn-error': modalConfig.type === 'error',
-              'btn-confirm': modalConfig.type === 'confirm'
-            }"
+            [ngClass]="confirmButtonClass()"
           >
-            {{ modalConfig.confirmText }}
+            {{ modalConfig().confirmText }}
           </button>
         </div>
       </div>
@@ -206,8 +196,9 @@ import { ModalService, ModalConfig } from '../../services/modal.service';
   `]
 })
 export class ModalComponent implements OnInit, OnDestroy {
-  showModal = false;
-  modalConfig: ModalConfig = {
+  // Signals for local state
+  showModal = signal<boolean>(false);
+  modalConfig = signal<ModalConfig>({
     title: '',
     message: '',
     type: 'info',
@@ -215,7 +206,20 @@ export class ModalComponent implements OnInit, OnDestroy {
     cancelText: 'Cancel',
     onConfirm: () => {},
     onCancel: () => {}
-  };
+  });
+
+  // Computed signals
+  showCancelButton = computed(() => this.modalConfig().type === 'confirm');
+  
+  headerClass = computed(() => {
+    const type = this.modalConfig().type;
+    return `modal-${type}`;
+  });
+
+  confirmButtonClass = computed(() => {
+    const type = this.modalConfig().type;
+    return `btn-${type}`;
+  });
 
   private subscriptions: Subscription[] = [];
 
@@ -223,14 +227,14 @@ export class ModalComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.subscriptions.push(
-      this.modalService.showModal$.subscribe(show => {
-        this.showModal = show;
+      this.modalService.showModal$.subscribe((show: boolean) => {
+        this.showModal.set(show);
       })
     );
 
     this.subscriptions.push(
-      this.modalService.modalConfig$.subscribe(config => {
-        this.modalConfig = config;
+      this.modalService.modalConfig$.subscribe((config: ModalConfig) => {
+        this.modalConfig.set(config);
       })
     );
   }
@@ -242,4 +246,4 @@ export class ModalComponent implements OnInit, OnDestroy {
   onOverlayClick(): void {
     this.modalService.close();
   }
-}   
+}

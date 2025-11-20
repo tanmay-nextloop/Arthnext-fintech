@@ -1,5 +1,5 @@
 // signature-list.component.ts
-import { Component, Input, Output, EventEmitter } from '@angular/core';
+import { Component, input, output, computed, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
 export interface SignatureArea {
@@ -21,7 +21,7 @@ export interface SignatureArea {
   standalone: true,
   imports: [CommonModule],
   template: `
-    <div *ngIf="signatures.length > 0" class="signatures-section">
+    <div *ngIf="signatureCount() > 0" class="signatures-section">
       <div 
         class="section-header" 
         (click)="toggleDropdown()" 
@@ -30,30 +30,30 @@ export interface SignatureArea {
         <h3>
           <span 
             class="dropdown-arrow" 
-            [class.open]="isOpen"
+            [class.open]="isOpen()"
           >
             ▶
           </span>
-          ✅ Signature Areas ({{ signatures.length }} total)
+          Signature Areas ({{ signatureCount() }} total)
         </h3>
         <div class="actions" (click)="$event.stopPropagation()">
           <button 
-            (click)="onClearAll()" 
+            (click)="handleClearAll()" 
             class="btn btn-clear"
-            [disabled]="signatures.length === 0"
+            [disabled]="signatureCount() === 0"
           >
-            🗑️ Clear All
+            Clear All
           </button>
         </div>
       </div>
       
       <div 
         class="signatures-content" 
-        [class.collapsed]="!isOpen"
+        [class.collapsed]="!isOpen()"
       >
-        <div *ngFor="let page of getPages()" class="page-group">
+        <div *ngFor="let page of pages()" class="page-group">
           <h4 class="page-group-header">
-            📄 Page {{ page }} 
+             Page {{ page }} 
             <span class="page-count">
               ({{ getSignaturesByPage(page).length }} signature(s))
             </span>
@@ -76,7 +76,7 @@ export interface SignatureArea {
                 </div>
               </div>
               <button 
-                (click)="onRemoveSignature(sig.signatureId)" 
+                (click)="handleRemoveSignature(sig.signatureId)" 
                 class="btn-remove-compact"
                 title="Remove this signature"
               >
@@ -291,36 +291,42 @@ export interface SignatureArea {
   `]
 })
 export class SignatureListComponent {
-  @Input() signatures: SignatureArea[] = [];
-  @Input() startOpen: boolean = true;
+  // Input signals (read-only from parent)
+  signatures = input<SignatureArea[]>([]);
+  startOpen = input<boolean>(true);
 
-  @Output() signatureRemoved = new EventEmitter<string>();
-  @Output() clearAllRequested = new EventEmitter<void>();
+  // Output signals (emit events to parent)
+  signatureRemoved = output<string>();
+  clearAllRequested = output<void>();
 
-  isOpen: boolean = true;
+  // Local state signal
+  isOpen = signal<boolean>(true);
+
+  // Computed signals (auto-update when dependencies change)
+  signatureCount = computed(() => this.signatures().length);
+  
+  pages = computed(() => {
+    const pageSet = new Set(this.signatures().map(s => s.pageNumber));
+    return Array.from(pageSet).sort((a, b) => a - b);
+  });
 
   ngOnInit() {
-    this.isOpen = this.startOpen;
+    this.isOpen.set(this.startOpen());
   }
 
   toggleDropdown() {
-    this.isOpen = !this.isOpen;
-  }
-
-  getPages(): number[] {
-    const pages = [...new Set(this.signatures.map(s => s.pageNumber))];
-    return pages.sort((a, b) => a - b);
+    this.isOpen.update(value => !value);
   }
 
   getSignaturesByPage(page: number): SignatureArea[] {
-    return this.signatures.filter(s => s.pageNumber === page);
+    return this.signatures().filter(s => s.pageNumber === page);
   }
 
-  onRemoveSignature(signatureId: string) {
+  handleRemoveSignature(signatureId: string) {
     this.signatureRemoved.emit(signatureId);
   }
 
-  onClearAll() {
+  handleClearAll() {
     this.clearAllRequested.emit();
   }
 }

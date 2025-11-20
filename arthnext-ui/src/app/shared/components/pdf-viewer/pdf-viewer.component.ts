@@ -3,14 +3,15 @@ import {
   Component,
   ElementRef,
   ViewChild,
-  Input,
-  Output,
-  EventEmitter,
+  input,
+  output,
+  signal,
+  computed,
+  effect,
+  untracked,
   AfterViewInit,
   PLATFORM_ID,
-  Inject,
-  OnChanges,
-  SimpleChanges
+  Inject
 } from '@angular/core';
 import { CommonModule, isPlatformBrowser } from '@angular/common';
 
@@ -33,6 +34,12 @@ export interface SignatureArea {
   color: string;
 }
 
+export interface User {
+  id: string;
+  name: string;
+  color: string;
+}
+
 @Component({
   selector: 'app-pdf-viewer',
   standalone: true,
@@ -43,7 +50,7 @@ export interface SignatureArea {
       <div class="pdf-thumbnails" #pdfContainer></div>
 
       <!-- Main Canvas Container with Overlay -->
-      <div class="canvas-wrapper" [class.hidden]="!selectedPageNumber">
+      <div class="canvas-wrapper" [class.hidden]="!selectedPageNumber()">
         <canvas
           #signCanvas
           class="sign-canvas"
@@ -68,7 +75,7 @@ export interface SignatureArea {
         </div>
       </div>
 
-      <div *ngIf="loading" class="loading">Loading PDF...</div>
+      <div *ngIf="loading()" class="loading">Loading PDF...</div>
     </div>
   `,
   styles: [`
@@ -162,47 +169,59 @@ export interface SignatureArea {
     }
   `]
 })
-export class PdfViewerComponent implements AfterViewInit, OnChanges {
+export class PdfViewerComponent implements AfterViewInit {
   @ViewChild('pdfContainer') pdfContainer?: ElementRef<HTMLDivElement>;
   @ViewChild('signCanvas') signCanvas?: ElementRef<HTMLCanvasElement>;
 
-  @Input() file: File | null = null;
-  @Input() selectedUser: { id: string; name: string; color: string } | null = null;
-  @Input() signatures: SignatureArea[] = [];
-  @Input() scale: number = 1.5;
-  @Input() thumbnailScale: number = 0.3;
+  // Input signals
+  file = input<File | null>(null);
+  selectedUser = input<User | null>(null);
+  signatures = input<SignatureArea[]>([]);
+  scale = input<number>(1.5);
+  thumbnailScale = input<number>(0.3);
 
-  @Output() pageSelected = new EventEmitter<number>();
-  @Output() signatureAdded = new EventEmitter<SignatureArea>();
-  @Output() signatureRemoveRequested = new EventEmitter<string>();
-  @Output() errorOccurred = new EventEmitter<string>();
+  // Output signals
+  pageSelected = output<number>();
+  signatureAdded = output<SignatureArea>();
+  signatureRemoveRequested = output<string>();
+  errorOccurred = output<string>();
 
-  public pdfDoc: any = null;
-  selectedPageNumber: number | null = null;
-  loading = false;
+  // Local state signals
+  loading = signal<boolean>(false);
+  selectedPageNumber = signal<number | null>(null);
+  
+  // Private state
+  private pdfDoc: any = null;
   private signCtx: CanvasRenderingContext2D | null = null;
   private currentRenderTask: any = null;
   private isDrawing = false;
   private justFinishedDrawing = false;
   private startX = 0;
   private startY = 0;
-  
-  constructor(@Inject(PLATFORM_ID) private platformId: Object) {}
-  
+  private mouseMoveThrottle: any = null;
+
+  constructor(@Inject(PLATFORM_ID) private platformId: Object) {
+    // Effect to load PDF when file changes
+    effect(() => {
+      const currentFile = this.file();
+      if (currentFile) {
+        untracked(() => this.loadPdfFile(currentFile));
+      }
+    });
+
+    // Effect to re-render when signatures change
+    effect(() => {
+      const sigs = this.signatures();
+      const pageNum = this.selectedPageNumber();
+      if (pageNum && sigs) {
+        untracked(() => this.renderSelectedPageWithAreas());
+      }
+    });
+  }
+
   ngAfterViewInit() {
     if (isPlatformBrowser(this.platformId)) {
       this.loadPdfJs();
-    }
-  }
-
-  ngOnChanges(changes: SimpleChanges) {
-    if (changes['file'] && changes['file'].currentValue) {
-      this.loadPdfFile(changes['file'].currentValue);
-    }
-    
-    console.log("Render component")
-    if (changes['signatures'] && this.selectedPageNumber) {
-      this.renderSelectedPageWithAreas();
     }
   }
 
@@ -219,8 +238,8 @@ export class PdfViewerComponent implements AfterViewInit, OnChanges {
   }
 
   private async loadPdfFile(file: File) {
-    this.loading = true;
-    this.selectedPageNumber = null;
+    this.loading.set(true);
+    this.selectedPageNumber.set(null);
 
     try {
       const pdfjs = await import('pdfjs-dist');
@@ -236,7 +255,7 @@ export class PdfViewerComponent implements AfterViewInit, OnChanges {
       console.error('Error loading PDF:', error);
       this.errorOccurred.emit(`Failed to load PDF: ${error.message || 'Unknown error'}`);
     } finally {
-      this.loading = false;
+      this.loading.set(false);
     }
   }
 
@@ -249,7 +268,7 @@ export class PdfViewerComponent implements AfterViewInit, OnChanges {
     for (let i = 1; i <= this.pdfDoc.numPages; i++) {
       try {
         const page = await this.pdfDoc.getPage(i);
-        const viewport = page.getViewport({ scale: this.thumbnailScale });
+        const viewport = page.getViewport({ scale: this.thumbnailScale() });
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         if (!ctx) continue;
@@ -303,7 +322,7 @@ export class PdfViewerComponent implements AfterViewInit, OnChanges {
   private async selectPage(pageNumber: number) {
     if (!this.pdfDoc || !this.signCanvas || this.isDrawing) return;
 
-    this.selectedPageNumber = pageNumber;
+    this.selectedPageNumber.set(pageNumber);
     this.pageSelected.emit(pageNumber);
 
     if (!this.signCtx && this.signCanvas) {
@@ -334,7 +353,8 @@ export class PdfViewerComponent implements AfterViewInit, OnChanges {
   }
 
   private async renderSelectedPageWithAreas() {
-    if (!this.selectedPageNumber || !this.pdfDoc || !this.signCtx || !this.signCanvas) return;
+    const pageNum = this.selectedPageNumber();
+    if (!pageNum || !this.pdfDoc || !this.signCtx || !this.signCanvas) return;
 
     try {
       if (this.currentRenderTask) {
@@ -342,8 +362,8 @@ export class PdfViewerComponent implements AfterViewInit, OnChanges {
         this.currentRenderTask = null;
       }
 
-      const page = await this.pdfDoc.getPage(this.selectedPageNumber);
-      const viewport = page.getViewport({ scale: this.scale });
+      const page = await this.pdfDoc.getPage(pageNum);
+      const viewport = page.getViewport({ scale: this.scale() });
       const canvas = this.signCanvas.nativeElement;
       canvas.height = viewport.height;
       canvas.width = viewport.width;
@@ -352,7 +372,7 @@ export class PdfViewerComponent implements AfterViewInit, OnChanges {
       await this.currentRenderTask.promise;
       this.currentRenderTask = null;
 
-      const pageSignatures = this.signatures.filter(s => s.pageNumber === this.selectedPageNumber);
+      const pageSignatures = this.signatures().filter(s => s.pageNumber === pageNum);
       pageSignatures.forEach(sig => {
         this.drawRectangle(sig.area, sig.color, sig.userName);
       });
@@ -386,14 +406,18 @@ export class PdfViewerComponent implements AfterViewInit, OnChanges {
   }
 
   onMouseDown(event: MouseEvent) {
-    if (!this.selectedPageNumber) {
+    const pageNum = this.selectedPageNumber();
+    if (!pageNum) {
       this.errorOccurred.emit('Please select a page first!');
       return;
     }
-    if (!this.selectedUser) {
+    
+    const user = this.selectedUser();
+    if (!user) {
       this.errorOccurred.emit('Please select a user first!');
       return;
     }
+    
     if (!this.signCanvas) return;
 
     const canvas = this.signCanvas.nativeElement;
@@ -408,7 +432,19 @@ export class PdfViewerComponent implements AfterViewInit, OnChanges {
   }
 
   async onMouseMove(event: MouseEvent) {
-    if (!this.isDrawing || !this.selectedPageNumber || !this.signCtx || !this.selectedUser || !this.signCanvas) return;
+    const pageNum = this.selectedPageNumber();
+    const user = this.selectedUser();
+    
+    if (!this.isDrawing || !pageNum || !this.signCtx || !user || !this.signCanvas) return;
+
+    // Throttle mouse move events to reduce flickering
+    if (this.mouseMoveThrottle) {
+      return;
+    }
+
+    this.mouseMoveThrottle = setTimeout(() => {
+      this.mouseMoveThrottle = null;
+    }, 16); // ~60fps
 
     const canvas = this.signCanvas.nativeElement;
     const rect = canvas.getBoundingClientRect();
@@ -423,24 +459,28 @@ export class PdfViewerComponent implements AfterViewInit, OnChanges {
 
     try {
       if (this.currentRenderTask) {
-        await this.currentRenderTask.cancel();
+        try {
+          await this.currentRenderTask.cancel();
+        } catch (e) {
+          // Ignore cancellation errors
+        }
         this.currentRenderTask = null;
       }
 
-      const page = await this.pdfDoc.getPage(this.selectedPageNumber);
-      const viewport = page.getViewport({ scale: this.scale });
+      const page = await this.pdfDoc.getPage(pageNum);
+      const viewport = page.getViewport({ scale: this.scale() });
+      
       this.signCtx.clearRect(0, 0, canvas.width, canvas.height);
 
-      this.currentRenderTask = page.render({ canvasContext: this.signCtx, viewport });
-      await this.currentRenderTask.promise;
-      this.currentRenderTask = null;
+      const renderTask = page.render({ canvasContext: this.signCtx, viewport });
+      await renderTask.promise;
 
-      const pageSignatures = this.signatures.filter(s => s.pageNumber === this.selectedPageNumber);
+      const pageSignatures = this.signatures().filter(s => s.pageNumber === pageNum);
       pageSignatures.forEach(sig => {
         this.drawRectangle(sig.area, sig.color, sig.userName);
       });
 
-      const currentColor = this.selectedUser.color;
+      const currentColor = user.color;
       this.signCtx.strokeStyle = currentColor;
       this.signCtx.lineWidth = 3;
       this.signCtx.setLineDash([5, 5]);
@@ -456,7 +496,10 @@ export class PdfViewerComponent implements AfterViewInit, OnChanges {
   }
 
   onMouseUp(event: MouseEvent) {
-    if (!this.isDrawing || !this.selectedPageNumber || !this.selectedUser || !this.signCanvas) return;
+    const pageNum = this.selectedPageNumber();
+    const user = this.selectedUser();
+    
+    if (!this.isDrawing || !pageNum || !user || !this.signCanvas) return;
 
     const canvas = this.signCanvas.nativeElement;
     const rect = canvas.getBoundingClientRect();
@@ -482,7 +525,7 @@ export class PdfViewerComponent implements AfterViewInit, OnChanges {
     }, 300);
 
     if (area.width > 20 && area.height > 20) {
-      if (this.checkOverlap(area, this.selectedPageNumber)) {
+      if (this.checkOverlap(area, pageNum)) {
         this.errorOccurred.emit('Signature area overlaps with an existing signature!');
         this.renderSelectedPageWithAreas();
         return;
@@ -490,11 +533,11 @@ export class PdfViewerComponent implements AfterViewInit, OnChanges {
 
       const userSignature: SignatureArea = {
         signatureId: `sig_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        userId: this.selectedUser.id,
-        userName: this.selectedUser.name,
-        pageNumber: this.selectedPageNumber,
+        userId: user.id,
+        userName: user.name,
+        pageNumber: pageNum,
         area: area,
-        color: this.selectedUser.color
+        color: user.color
       };
 
       this.signatureAdded.emit(userSignature);
@@ -515,8 +558,9 @@ export class PdfViewerComponent implements AfterViewInit, OnChanges {
   }
 
   getPageSignatures(): SignatureArea[] {
-    if (!this.selectedPageNumber) return [];
-    return this.signatures.filter(s => s.pageNumber === this.selectedPageNumber);
+    const pageNum = this.selectedPageNumber();
+    if (!pageNum) return [];
+    return this.signatures().filter(s => s.pageNumber === pageNum);
   }
 
   getRemoveButtonPosition(sig: SignatureArea): { x: number; y: number } {
@@ -537,7 +581,7 @@ export class PdfViewerComponent implements AfterViewInit, OnChanges {
   }
 
   private checkOverlap(newArea: Rectangle, pageNumber: number): boolean {
-    const pageSignatures = this.signatures.filter(s => s.pageNumber === pageNumber);
+    const pageSignatures = this.signatures().filter(s => s.pageNumber === pageNumber);
 
     for (const sig of pageSignatures) {
       if (this.rectanglesOverlap(newArea, sig.area)) {

@@ -30,7 +30,7 @@ export class MultisignatureComponent {
   documentType = '';
   priority = '';
   uploadedFile: File | null = null;
-
+  
   // User management
   users: User[] = [];
   selectedUser: User | null = null;
@@ -116,10 +116,32 @@ export class MultisignatureComponent {
   onPageSelected(pageNumber: number) {
     console.log('Page selected:', pageNumber);
   }
+onSignatureAdded(sig: SignatureArea) {
+  // Add the new signature to the array
+  this.signatures = [...this.signatures, sig];
+  // Important: create new array reference for change detection
+}
 
-  onSignatureAdded(signature: SignatureArea) {
-    this.signatures.push(signature);
-  }
+handleListRemove(id: string) {
+  this.modalService.showConfirm(
+    'Remove Signature',
+    'Remove this signature?',
+    () => {
+      // Remove and create new array reference
+      this.signatures = this.signatures.filter(s => s.signatureId !== id);
+    }
+  );
+}
+
+handleClearAll() {
+  this.modalService.showConfirm(
+    'Clear All',
+    'Remove all signatures?',
+    () => {
+      this.signatures = [];
+    }
+  );
+}
 
   onSignatureRemoveRequested(signatureId: string) {
     this.modalService.showConfirm(
@@ -132,13 +154,13 @@ export class MultisignatureComponent {
       }
     );
   }
-  handleClearAll() {
-    this.modalService.showConfirm(
-      'Clear All',
-      'Remove all signatures?',
-      () => this.signatures = []
-    );
-  }
+  // handleClearAll() {
+  //   this.modalService.showConfirm(
+  //     'Clear All',
+  //     'Remove all signatures?',
+  //     () => this.signatures = []
+  //   );
+  // }
 
 
 
@@ -187,9 +209,9 @@ export class MultisignatureComponent {
     this.signaturesDropdownOpen = !this.signaturesDropdownOpen;
   }
 
-  handleListRemove(signatureId: string) {
-    this.removeSignature(signatureId);
-  }
+  // handleListRemove(signatureId: string) {
+  //   this.removeSignature(signatureId);
+  // }
   // API Submission
   async submitToAPI() {
     // Validation
