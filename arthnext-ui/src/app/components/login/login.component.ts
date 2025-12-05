@@ -1,12 +1,62 @@
-import { NgIf } from '@angular/common'
-import { Router } from '@angular/router'
-import { Component } from '@angular/core'
-import { FormsModule, NgForm } from '@angular/forms'
+// import { NgIf } from '@angular/common'
+// import { Router } from '@angular/router'
+// import { Component } from '@angular/core'
+// import { FormsModule, NgForm } from '@angular/forms'
+// import { AuthService } from '../../service/Auth/auth.service'
+
+// type loginType = {
+//   email: string
+//   password: string
+// }
+
+// @Component({
+//   selector: 'app-login',
+//   standalone: true,
+//   imports: [FormsModule, NgIf],
+//   templateUrl: './login.component.html',
+//   styleUrls: ['./login.component.scss'],
+// })
+// export class LoginComponent {
+//   constructor(
+//     private router: Router,
+//     private authService: AuthService,
+//   ) {}
+//   login: loginType = { email: '', password: '' }
+
+//   onSubmit(form: NgForm) {
+//     if (form.invalid) {
+//       console.log('Form is Invalid')
+//       form.control.markAllAsTouched()
+//       return
+//     }
+
+//     const { email, password } = this.login
+
+//     const loginResult = this.authService.login(email, password)
+
+//     if (loginResult.success) {
+//       this.router.navigate(['/'])
+//     } else {
+//       if (loginResult.emailError) {
+//         form.controls['email'].setErrors({ invalidEmail: true })
+//       }
+//       if (loginResult.passwordError) {
+//         form.controls['password'].setErrors({ invalidPassword: true })
+//       }
+//     }
+//   }
+// }
+
+
+import { Component } from '@angular/core';
+import { Router } from '@angular/router';
+import { FormsModule, NgForm } from '@angular/forms';
+import { NgIf } from '@angular/common';
 import { AuthService } from '../../service/Auth/auth.service'
 
 type loginType = {
-  email: string
-  password: string
+  email: string;
+  password: string;
 }
 
 @Component({
@@ -21,27 +71,28 @@ export class LoginComponent {
     private router: Router,
     private authService: AuthService,
   ) {}
-  login: loginType = { email: '', password: '' }
+  
+  login: loginType = { email: '', password: '' };
 
   onSubmit(form: NgForm) {
     if (form.invalid) {
-      console.log('Form is Invalid')
-      form.control.markAllAsTouched()
-      return
+      console.log('Form is Invalid');
+      form.control.markAllAsTouched();
+      return;
     }
 
-    const { email, password } = this.login
-
-    const loginResult = this.authService.login(email, password)
+    const { email, password } = this.login;
+    const loginResult = this.authService.login(email, password);
 
     if (loginResult.success) {
-      this.router.navigate(['/'])
+      // Redirect to dashboard after successful login
+      this.router.navigate(['/dashboard']);
     } else {
       if (loginResult.emailError) {
-        form.controls['email'].setErrors({ invalidEmail: true })
+        form.controls['email'].setErrors({ invalidEmail: true });
       }
       if (loginResult.passwordError) {
-        form.controls['password'].setErrors({ invalidPassword: true })
+        form.controls['password'].setErrors({ invalidPassword: true });
       }
     }
   }

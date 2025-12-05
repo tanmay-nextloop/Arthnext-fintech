@@ -1,0 +1,247 @@
+<!-- components/client-admin-dashboard/client-admin-dashboard.component.html -->
+
+<div class="min-h-screen bg-gray-50 p-6">
+  <!-- Header -->
+  <div class="mb-8 flex justify-between items-center">
+    <div>
+      <h1 class="text-3xl font-bold text-gray-900">{{ client?.name }} - Admin Dashboard</h1>
+      <p class="text-gray-600 mt-2">Manage employee credit distribution</p>
+    </div>
+    <button
+      (click)="showAddEmployeeModal = true"
+      class="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition shadow-lg flex items-center gap-2"
+    >
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"/>
+      </svg>
+      Add Employee
+    </button>
+  </div>
+
+  <!-- Stats Cards -->
+  <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+    <div class="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg shadow-lg p-6 text-white">
+      <p class="text-sm opacity-90">Total Credits</p>
+      <p class="text-4xl font-bold mt-2">{{ client?.totalCredits || 0 }}</p>
+      <p class="text-xs mt-2 opacity-75">Allocated by Arthnext</p>
+    </div>
+
+    <div class="bg-gradient-to-br from-green-500 to-green-600 rounded-lg shadow-lg p-6 text-white">
+      <p class="text-sm opacity-90">Available</p>
+      <p class="text-4xl font-bold mt-2">{{ client?.remainingCredits || 0 }}</p>
+      <p class="text-xs mt-2 opacity-75">Ready to distribute</p>
+    </div>
+
+    <div class="bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg shadow-lg p-6 text-white">
+      <p class="text-sm opacity-90">Distributed</p>
+      <p class="text-4xl font-bold mt-2">{{ client?.usedCredits || 0 }}</p>
+      <p class="text-xs mt-2 opacity-75">To {{ (client?.employees?.length || 0) }} employees</p>
+    </div>
+
+    <div class="bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg shadow-lg p-6 text-white">
+      <p class="text-sm opacity-90">Active Employees</p>
+      <p class="text-4xl font-bold mt-2">{{ (client?.employees?.length || 0) }}</p>
+      <p class="text-xs mt-2 opacity-75">Using credits</p>
+    </div>
+  </div>
+
+  <!-- Allocate to Employee Section -->
+  <div class="bg-white rounded-lg shadow-lg p-6 mb-8">
+    <h2 class="text-xl font-semibold mb-4 flex items-center">
+      <svg class="w-6 h-6 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+      </svg>
+      Allocate Credits to Employee
+    </h2>
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <select [(ngModel)]="selectedEmployeeId" class="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
+        <option value="">Select Employee</option>
+        <option *ngFor="let emp of client?.employees" [value]="emp.id">
+          {{ emp.name }} (Available: {{ emp.remainingCredits }})
+        </option>
+      </select>
+      <input
+        type="number"
+        [(ngModel)]="creditsToAllocate"
+        placeholder="Credits amount"
+        [max]="client?.remainingCredits || 0"
+        min="1"
+        class="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+      />
+      <div class="text-sm text-gray-600 flex items-center">
+        Max: <span class="font-semibold ml-1">{{ client?.remainingCredits || 0 }}</span>
+      </div>
+      <button
+        (click)="allocateToEmployee()"
+        [disabled]="!selectedEmployeeId || !creditsToAllocate || (creditsToAllocate > (client?.remainingCredits || 0)) || creditsToAllocate <= 0"
+        class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition"
+      >
+        Allocate
+      </button>
+    </div>
+    <div *ngIf="creditsToAllocate && (creditsToAllocate > (client?.remainingCredits || 0))" class="mt-2 text-red-600 text-sm">
+      ⚠️ Insufficient credits available
+    </div>
+  </div>
+
+  <!-- Employees Table -->
+  <div class="bg-white rounded-lg shadow-lg overflow-hidden">
+    <div class="px-6 py-4 border-b bg-gray-50">
+      <h2 class="text-xl font-semibold">Employee Credit Management</h2>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full">
+        <thead class="bg-gray-100">
+          <tr>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Employee</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Department</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Allocated</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Used</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Remaining</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Usage</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Status</th>
+          </tr>
+        </thead>
+        <tbody class="bg-white divide-y divide-gray-200">
+          <tr *ngFor="let employee of client?.employees" class="hover:bg-blue-50 transition">
+            <td class="px-6 py-4 whitespace-nowrap">
+              <div class="flex items-center">
+                <div class="flex-shrink-0 h-10 w-10 bg-gradient-to-br from-blue-400 to-blue-600 rounded-full flex items-center justify-center text-white font-semibold">
+                  {{ getEmployeeInitials(employee.name) }}
+                </div>
+                <div class="ml-4">
+                  <div class="text-sm font-medium text-gray-900">{{ employee.name }}</div>
+                  <div class="text-sm text-gray-500">{{ employee.email }}</div>
+                </div>
+              </div>
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap">
+              <span class="px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded-full">
+                {{ employee.department }}
+              </span>
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap">
+              <span class="text-sm font-semibold text-gray-900">{{ employee.allocatedCredits }}</span>
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap">
+              <span class="text-sm text-orange-600 font-medium">{{ employee.usedCredits }}</span>
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap">
+              <span class="text-sm text-green-600 font-semibold">{{ employee.remainingCredits }}</span>
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap">
+              <div class="flex items-center">
+                <div class="w-24 bg-gray-200 rounded-full h-2.5 mr-2">
+                  <div
+                    class="h-2.5 rounded-full transition-all"
+                    [ngClass]="getUsageBarColor(employee)"
+                    [style.width.%]="getEmployeeUsagePercentage(employee)"
+                  ></div>
+                </div>
+                <span class="text-xs text-gray-600">{{ getEmployeeUsagePercentage(employee).toFixed(0) }}%</span>
+              </div>
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap">
+              <span
+                class="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full"
+                [ngClass]="getEmployeeStatusClass(employee)"
+              >
+                {{ getEmployeeStatusText(employee) }}
+              </span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Credit Distribution Chart -->
+  <div class="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+    <div class="bg-white rounded-lg shadow-lg p-6">
+      <h3 class="text-lg font-semibold mb-4">Credit Distribution by Department</h3>
+      <div class="space-y-4">
+        <div *ngFor="let dept of getDepartmentStats()">
+          <div class="flex justify-between mb-1">
+            <span class="text-sm font-medium text-gray-700">{{ dept.name }}</span>
+            <span class="text-sm font-semibold text-gray-900">{{ dept.credits }}</span>
+          </div>
+          <div class="w-full bg-gray-200 rounded-full h-2">
+            <div
+              class="bg-blue-600 h-2 rounded-full transition-all"
+              [style.width.%]="(dept.credits / (client?.usedCredits || 1)) * 100"
+            ></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="bg-white rounded-lg shadow-lg p-6">
+      <h3 class="text-lg font-semibold mb-4">Quick Stats</h3>
+      <div class="space-y-4">
+        <div class="flex justify-between items-center p-3 bg-blue-50 rounded-lg">
+          <span class="text-sm text-gray-700">Average per Employee</span>
+          <span class="text-lg font-bold text-blue-600">{{ getAveragePerEmployee() }}</span>
+        </div>
+        <div class="flex justify-between items-center p-3 bg-green-50 rounded-lg">
+          <span class="text-sm text-gray-700">Most Allocated</span>
+          <span class="text-lg font-bold text-green-600">{{ getMostAllocatedEmployee() }}</span>
+        </div>
+        <div class="flex justify-between items-center p-3 bg-orange-50 rounded-lg">
+          <span class="text-sm text-gray-700">Total Usage Rate</span>
+          <span class="text-lg font-bold text-orange-600">{{ getTotalUsageRate() }}%</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add Employee Modal -->
+<div *ngIf="showAddEmployeeModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+  <div class="bg-white rounded-lg p-8 max-w-md w-full mx-4">
+    <h3 class="text-2xl font-bold mb-6">Add New Employee</h3>
+    <div class="space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-2">Employee Name</label>
+        <input
+          type="text"
+          [(ngModel)]="newEmployeeName"
+          placeholder="Enter employee name"
+          class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500"
+        />
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-2">Email</label>
+        <input
+          type="email"
+          [(ngModel)]="newEmployeeEmail"
+          placeholder="Enter email"
+          class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500"
+        />
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-2">Department</label>
+        <input
+          type="text"
+          [(ngModel)]="newEmployeeDepartment"
+          placeholder="Enter department"
+          class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500"
+        />
+      </div>
+    </div>
+    <div class="flex gap-4 mt-6">
+      <button
+        (click)="closeModal()"
+        class="flex-1 px-4 py-2 border rounded-lg hover:bg-gray-50 transition"
+      >
+        Cancel
+      </button>
+      <button
+        (click)="addNewEmployee()"
+        [disabled]="!newEmployeeName || !newEmployeeEmail || !newEmployeeDepartment"
+        class="flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition"
+      >
+        Add Employee
+      </button>
+    </div>
+  </div>
+</div>

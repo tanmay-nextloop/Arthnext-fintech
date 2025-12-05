@@ -10,6 +10,7 @@ import { PdfSelectorComponent } from './pdf-sign/pdf-sign.component'
 import { MultisignComponent } from './multisign/multisign.component'
 import { MultisignatureComponent } from './multisignature/multisignature.component'
 import { EsignStatusComponent } from './esign-status/esign-status.component'
+import { DashboardComponent } from './dashboard/dashboard.component'
 export const routes: Routes = [
   { path: 'login', component: LoginComponent },
   { path: '', redirectTo: 'home', pathMatch: 'full' },
@@ -17,8 +18,9 @@ export const routes: Routes = [
   { path: 'esign', component: EsignComponent, canActivate: [AuthGuard] },
   { path: 'pdfsign', component: PdfSelectorComponent, canActivate: [AuthGuard] },
   { path: 'multisign', component: MultisignComponent, canActivate: [AuthGuard] },
-    { path: 'esignStatus', component: EsignStatusComponent, canActivate: [AuthGuard] },
-    { path: 'multisignature', component: MultisignatureComponent, canActivate: [AuthGuard] },
+  { path: 'esignStatus', component: EsignStatusComponent, canActivate: [AuthGuard] },
+  { path: 'multisignature', component: MultisignatureComponent, canActivate: [AuthGuard] },
+    { path: 'dashboard', component: DashboardComponent, canActivate: [AuthGuard] },
   {
     path: 'data-rendering',
     component: DataRenderingComponent,

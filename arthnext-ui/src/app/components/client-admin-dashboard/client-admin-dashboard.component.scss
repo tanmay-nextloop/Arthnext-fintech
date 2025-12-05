@@ -1,0 +1,20 @@
+// components/client-admin-dashboard/client-admin-dashboard.component.scss
+
+:host {
+  display: block;
+}
+
+.stats-card {
+  transition: all 0.3s ease;
+  
+  &:hover {
+    transform: translateY(-5px) scale(1.02);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+  }
+}
+
+table {
+  tbody tr {
+    transition: all 0.2s ease;
+  }
+}

@@ -30,7 +30,7 @@ export class MultisignatureComponent {
   documentType = '';
   priority = '';
   uploadedFile: File | null = null;
-  
+
   // User management
   users: User[] = [];
   selectedUser: User | null = null;
@@ -116,32 +116,32 @@ export class MultisignatureComponent {
   onPageSelected(pageNumber: number) {
     console.log('Page selected:', pageNumber);
   }
-onSignatureAdded(sig: SignatureArea) {
-  // Add the new signature to the array
-  this.signatures = [...this.signatures, sig];
-  // Important: create new array reference for change detection
-}
+  onSignatureAdded(sig: SignatureArea) {
+    // Add the new signature to the array
+    this.signatures = [...this.signatures, sig];
+    // Important: create new array reference for change detection
+  }
 
-handleListRemove(id: string) {
-  this.modalService.showConfirm(
-    'Remove Signature',
-    'Remove this signature?',
-    () => {
-      // Remove and create new array reference
-      this.signatures = this.signatures.filter(s => s.signatureId !== id);
-    }
-  );
-}
+  handleListRemove(id: string) {
+    this.modalService.showConfirm(
+      'Remove Signature',
+      'Remove this signature?',
+      () => {
+        // Remove and create new array reference
+        this.signatures = this.signatures.filter(s => s.signatureId !== id);
+      }
+    );
+  }
 
-handleClearAll() {
-  this.modalService.showConfirm(
-    'Clear All',
-    'Remove all signatures?',
-    () => {
-      this.signatures = [];
-    }
-  );
-}
+  handleClearAll() {
+    this.modalService.showConfirm(
+      'Clear All',
+      'Remove all signatures?',
+      () => {
+        this.signatures = [];
+      }
+    );
+  }
 
   onSignatureRemoveRequested(signatureId: string) {
     this.modalService.showConfirm(
@@ -264,24 +264,49 @@ handleClearAll() {
       });
 
       // Build signers array
-      const signers = Array.from(userSignatureMap.entries()).map(
-        ([userId, sigs]) => {
-          const user = this.users.find(u => u.id === userId);
-          return {
-            aadhaar: user?.email || '',
-            name: sigs[0].userName,
-            signatures: sigs.map(sig => ({
-              coordinates: {
-                x: Math.round(sig.area.x),
-                y: Math.round(sig.area.y),
-                width: Math.round(sig.area.width),
-                height: Math.round(sig.area.height)
-              },
-              page: sig.pageNumber
-            }))
+      // const signers = Array.from(userSignatureMap.entries()).map(
+      //   ([userId, sigs]) => {
+      //     const user = this.users.find(u => u.id === userId);
+      //     return {
+      //       aadhaar: user?.email || '',
+      //       name: sigs[0].userName,
+      //       signatures: sigs.map(sig => ({
+      //         coordinates: {
+      //           x: Math.round(sig.area.x),
+      //           y: Math.round(sig.area.y),
+      //           width: Math.round(sig.area.width),
+      //           height: Math.round(sig.area.height)
+      //         },
+      //         page: sig.pageNumber
+      //       }))
+      //     };
+      //   }
+      // );
+
+
+      const signers = Array.from(userSignatureMap.entries()).map(([userId, sigs]) => {
+        const user = this.users.find(u => u.id === userId);
+
+        const coordinates: Record<number, any> = {};
+        const pages = new Set<number>();
+
+        sigs.forEach(sig => {
+          coordinates[sig.pageNumber] = {
+            x: Math.round(sig.area.x),
+            y: Math.round(sig.area.y),
+            width: Math.round(sig.area.width),
+            height: Math.round(sig.area.height)
           };
-        }
-      );
+          pages.add(sig.pageNumber);
+        });
+
+        return {
+          aadhaar: user?.email || '',
+          name: user?.name || '',
+          coordinates: coordinates,
+          pages: Array.from(pages)
+        };
+      });
 
       const payload = {
 
