@@ -58,7 +58,7 @@ export interface AuthUser {
   id: string;
   name: string;
   email: string;
-  role: 'super_admin' | 'client_admin' | 'employee';
+  role: 'super_admin' | 'client_admin' | 'user';
   clientId?: string;
   token?: string;
 }
@@ -94,13 +94,13 @@ export class AuthService {
       }
     },
     {
-      email: 'john@nextloop.com',
-      password: 'john123',
+      email: 'piyush@nextloop.com',
+      password: 'piyush123',
       user: {
-        id: 'emp_1',
-        name: 'John Doe',
-        email: 'john@nextloop.com',
-        role: 'employee' as const,
+        id: 'user_1',
+        name: 'Piyush Kumar',
+        email: 'piyush@nextloop.com',
+        role: 'user' as const,
         clientId: 'client_1'
       }
     }
@@ -114,9 +114,9 @@ export class AuthService {
     }
   }
 
-  login(email: string, password: string): { 
-    success: boolean; 
-    emailError?: boolean; 
+  login(email: string, password: string): {
+    success: boolean;
+    emailError?: boolean;
     passwordError?: boolean;
     user?: AuthUser;
   } {
@@ -150,7 +150,7 @@ export class AuthService {
     return this.currentUserSubject.value !== null;
   }
 
-  getUserRole(): 'super_admin' | 'client_admin' | 'employee' | null {
+  getUserRole(): 'super_admin' | 'client_admin' | 'user' | null {
     return this.currentUserSubject.value?.role || null;
   }
 }

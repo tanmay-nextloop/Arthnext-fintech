@@ -4,7 +4,7 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DashboardService } from '../../shared/services/dashboard.service';
-import { Client } from '../../shared/models/dashboard.model';
+import { Client, User } from '../../shared/models/dashboard.model';
 
 @Component({
   selector: 'app-super-admin-dashboard',
@@ -15,13 +15,12 @@ import { Client } from '../../shared/models/dashboard.model';
 })
 export class SuperAdminDashboardComponent implements OnInit {
   clients: Client[] = [];
-  selectedClientId = '';
-  creditsToAllocate: number | null = null;
+  expandedClients: Set<string> = new Set();
   showAddClientModal = false;
   newClientName = '';
   newClientEmail = '';
 
-  constructor(private dashboardService: DashboardService) {}
+  constructor(private dashboardService: DashboardService) { }
 
   ngOnInit() {
     this.dashboardService.clients$.subscribe(clients => {
@@ -29,31 +28,30 @@ export class SuperAdminDashboardComponent implements OnInit {
     });
   }
 
-  getTotalAllocated(): number {
-    return this.clients.reduce((sum, client) => sum + client.totalCredits, 0);
+  // Revenue and Statistics
+  getTotalRevenue(): number {
+    return this.dashboardService.getTotalRevenue();
   }
 
-  getTotalUsed(): number {
-    return this.clients.reduce((sum, client) => sum + client.usedCredits, 0);
+  getTotalUsers(): number {
+    return this.clients.reduce((sum, client) => sum + client.users.length, 0);
   }
 
-  getTotalRemaining(): number {
-    return this.clients.reduce((sum, client) => sum + client.remainingCredits, 0);
+  getCurrentMonthRevenue(): number {
+    return this.clients.reduce((sum, client) => sum + client.currentMonthBill, 0);
   }
 
-  allocateCredits() {
-    if (this.selectedClientId && this.creditsToAllocate && this.creditsToAllocate > 0) {
-      const success = this.dashboardService.allocateCreditsToClient(
-        this.selectedClientId,
-        this.creditsToAllocate
-      );
-      
-      if (success) {
-        alert(`Successfully allocated ${this.creditsToAllocate} credits!`);
-        this.selectedClientId = '';
-        this.creditsToAllocate = null;
-      }
+  // Client Management
+  toggleClientExpansion(clientId: string) {
+    if (this.expandedClients.has(clientId)) {
+      this.expandedClients.delete(clientId);
+    } else {
+      this.expandedClients.add(clientId);
     }
+  }
+
+  isClientExpanded(clientId: string): boolean {
+    return this.expandedClients.has(clientId);
   }
 
   addNewClient() {
@@ -65,20 +63,57 @@ export class SuperAdminDashboardComponent implements OnInit {
     }
   }
 
-  getUsagePercentage(client: Client): number {
-    if (client.totalCredits === 0) return 0;
-    return (client.usedCredits / client.totalCredits) * 100;
+  // User Statistics per Client
+  getUserCountForClient(client: Client): number {
+    return client.users.length;
   }
 
-  getStatusClass(client: Client): string {
-    if (client.remainingCredits > 300) return 'bg-green-100 text-green-800';
-    if (client.remainingCredits > 100) return 'bg-yellow-100 text-yellow-800';
+  getTotalCreditsUsedByClient(client: Client): number {
+    return client.users.reduce((sum, user) => sum + user.totalUsed, 0);
+  }
+
+  getPaidCreditsUsedByClient(client: Client): number {
+    return client.users.reduce((sum, user) => sum + user.paidCreditsUsed, 0);
+  }
+
+  // User Display Methods
+  getUserInitials(name: string): string {
+    return name.split(' ').map(n => n[0]).join('').toUpperCase();
+  }
+
+  getUserStatusClass(user: User): string {
+    const totalCredits = user.freeCredits + user.paidCredits;
+    if (totalCredits > 30) return 'bg-green-100 text-green-800';
+    if (totalCredits > 10) return 'bg-yellow-100 text-yellow-800';
     return 'bg-red-100 text-red-800';
   }
 
-  getStatusText(client: Client): string {
-    if (client.remainingCredits > 300) return 'Healthy';
-    if (client.remainingCredits > 100) return 'Warning';
+  getUserStatusText(user: User): string {
+    const totalCredits = user.freeCredits + user.paidCredits;
+    if (totalCredits > 30) return 'Active';
+    if (totalCredits > 10) return 'Low';
     return 'Critical';
+  }
+
+  getClientStatusClass(client: Client): string {
+    const avgCredits = client.users.length > 0
+      ? client.users.reduce((sum, u) => sum + u.freeCredits + u.paidCredits, 0) / client.users.length
+      : 0;
+    if (avgCredits > 30) return 'bg-green-100 text-green-800';
+    if (avgCredits > 10) return 'bg-yellow-100 text-yellow-800';
+    return 'bg-red-100 text-red-800';
+  }
+
+  getClientStatusText(client: Client): string {
+    const avgCredits = client.users.length > 0
+      ? client.users.reduce((sum, u) => sum + u.freeCredits + u.paidCredits, 0) / client.users.length
+      : 0;
+    if (avgCredits > 30) return 'Healthy';
+    if (avgCredits > 10) return 'Warning';
+    return 'Needs Attention';
+  }
+
+  formatCurrency(amount: number): string {
+    return `$${amount.toFixed(2)}`;
   }
 }
