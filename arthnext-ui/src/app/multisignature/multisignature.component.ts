@@ -340,14 +340,19 @@ export class MultisignatureComponent {
       }
 
       tab1.document.write('<p>Preparing eSign document...</p>');
-      this.router.navigate(['/esignStatus'], {
-        queryParams: { esignId: "fgdghd" }
-      });
+      // this.router.navigate(['/esignStatus'], {
+      //   queryParams: { esignId: "fgdghd" }
+      // });
       this.http.post(this.initiateAPI, formData).subscribe({
         next: (res: any) => {
           this.submitting = false;
           if (res?.esignUrl) {
             tab1.location.href = res.esignUrl;
+
+              // tab1.document.write('<p>Preparing eSign document...</p>');
+      this.router.navigate(['/esignStatus'], {
+        queryParams: { esignId: res?.esignId }
+      });
           } else {
             tab1.document.body.innerHTML = '<p>Failed to get eSign URL.</p>';
           }
