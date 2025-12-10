@@ -40,7 +40,6 @@ export class DashboardService {
             clientId: 'client_1',
             role: 'user',
             freeCredits: 25,
-            paidCredits: 100,
             totalUsed: 125,
             freeCreditsUsed: 25,
             paidCreditsUsed: 100,
@@ -54,7 +53,6 @@ export class DashboardService {
             clientId: 'client_1',
             role: 'user',
             freeCredits: 10,
-            paidCredits: 50,
             totalUsed: 90,
             freeCreditsUsed: 40,
             paidCreditsUsed: 50,
@@ -68,7 +66,6 @@ export class DashboardService {
             clientId: 'client_1',
             role: 'user',
             freeCredits: 30,
-            paidCredits: 20,
             totalUsed: 40,
             freeCreditsUsed: 20,
             paidCreditsUsed: 20,
@@ -82,7 +79,6 @@ export class DashboardService {
             clientId: 'client_1',
             role: 'client_admin',
             freeCredits: 50,
-            paidCredits: 0,
             totalUsed: 0,
             freeCreditsUsed: 0,
             paidCreditsUsed: 0,
@@ -106,7 +102,6 @@ export class DashboardService {
             clientId: 'client_2',
             role: 'user',
             freeCredits: 5,
-            paidCredits: 80,
             totalUsed: 125,
             freeCreditsUsed: 45,
             paidCreditsUsed: 80,
@@ -120,7 +115,6 @@ export class DashboardService {
             clientId: 'client_2',
             role: 'user',
             freeCredits: 20,
-            paidCredits: 30,
             totalUsed: 60,
             freeCreditsUsed: 30,
             paidCreditsUsed: 30,
@@ -249,7 +243,6 @@ export class DashboardService {
         clientId,
         role,
         freeCredits: this.FREE_CREDITS,  // Auto-assign 50 free credits
-        paidCredits: 0,
         totalUsed: 0,
         freeCreditsUsed: 0,
         paidCreditsUsed: 0,
@@ -290,21 +283,20 @@ export class DashboardService {
 
     if (!user || !client) return false;
 
-    // Check if user has any credits available
-    if (user.freeCredits <= 0 && user.paidCredits <= 0) {
-      return false; // No credits available
-    }
+
+    // Paid credits are unlimited, so users can always use services
+    // (even after free credits run out)
 
     const currentMonth = this.getCurrentMonth();
     let creditType: 'free' | 'paid';
 
-    // Use free credits first, then paid
+    // Use free credits first, then paid (unlimited)
     if (user.freeCredits > 0) {
       user.freeCredits -= 1;
       user.freeCreditsUsed += 1;
       creditType = 'free';
     } else {
-      user.paidCredits -= 1;
+      // Paid credits are unlimited - just track usage
       user.paidCreditsUsed += 1;
       creditType = 'paid';
 
@@ -334,20 +326,6 @@ export class DashboardService {
 
     this.clients.next([...clients]);
     return true;
-  }
-
-  // Add paid credits to a user (for testing or manual allocation)
-  addPaidCredits(userId: string, amount: number): boolean {
-    const clients = this.clients.value;
-    for (const client of clients) {
-      const user = client.users.find(u => u.id === userId);
-      if (user) {
-        user.paidCredits += amount;
-        this.clients.next([...clients]);
-        return true;
-      }
-    }
-    return false;
   }
 
   // Transaction History
@@ -446,8 +424,8 @@ export class DashboardService {
 
     return {
       freeCredits: user.freeCredits,
-      paidCredits: user.paidCredits,
-      totalCredits: user.freeCredits + user.paidCredits,
+      paidCredits: Infinity,  // Unlimited paid credits
+      totalCredits: Infinity,  // Unlimited total after free credits
       freeCreditsUsed: user.freeCreditsUsed,
       paidCreditsUsed: user.paidCreditsUsed,
       totalUsed: user.totalUsed

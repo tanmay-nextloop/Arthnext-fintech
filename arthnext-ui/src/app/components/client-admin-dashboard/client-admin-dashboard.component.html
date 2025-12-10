@@ -133,13 +133,38 @@
               </span>
             </td>
             <td class="px-6 py-4 whitespace-nowrap">
-              <span class="text-sm font-semibold text-green-600">{{ user.freeCredits }}</span>
-              <span class="text-xs text-gray-500">/ 50</span>
-              <div class="text-xs text-gray-500 mt-1">Used: {{ user.freeCreditsUsed }}</div>
+              <div class="text-sm">
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="font-semibold text-green-600">{{ user.freeCredits }}</span>
+                  <span class="text-xs text-gray-500">of 50 free remaining</span>
+                </div>
+                <div class="w-32 bg-gray-200 rounded-full h-2 mb-1">
+                  <div class="bg-green-500 h-2 rounded-full transition-all"
+                    [style.width.%]="(user.freeCredits / 50) * 100"></div>
+                </div>
+                <div class="text-xs text-gray-500">Used: {{ user.freeCreditsUsed }}</div>
+              </div>
             </td>
             <td class="px-6 py-4 whitespace-nowrap">
-              <span class="text-sm font-semibold text-purple-600">{{ user.paidCredits }}</span>
-              <div class="text-xs text-gray-500 mt-1">Used: {{ user.paidCreditsUsed }}</div>
+              <div class="text-sm">
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="font-semibold text-purple-600">∞ Unlimited</span>
+                </div>
+                <div *ngIf="user.paidCreditsUsed > 0" class="text-xs text-orange-600 font-medium">
+                  Used: {{ user.paidCreditsUsed }} (${{ (user.paidCreditsUsed * 0.10).toFixed(2) }})
+                </div>
+                <div *ngIf="user.freeCredits > 0" class="text-xs text-blue-600 mt-1 flex items-center gap-1">
+                  <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd"
+                      d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                      clip-rule="evenodd" />
+                  </svg>
+                  <span>Used after free credits</span>
+                </div>
+                <div *ngIf="user.freeCredits === 0" class="text-xs text-green-600 mt-1">
+                  ✓ Using unlimited paid credits
+                </div>
+              </div>
             </td>
             <td class="px-6 py-4 whitespace-nowrap">
               <span class="text-sm font-semibold text-gray-900">{{ user.totalUsed }}</span>

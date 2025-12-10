@@ -87,7 +87,8 @@ export class UserDashboardComponent implements OnInit {
     // Credit Information
     getTotalCredits(): number {
         if (!this.user) return 0;
-        return this.user.freeCredits + this.user.paidCredits;
+        // Show free credits only - paid are unlimited
+        return this.user.freeCredits;
     }
 
     getFreeCreditsPercentage(): number {
@@ -97,8 +98,8 @@ export class UserDashboardComponent implements OnInit {
 
     getUsagePercentage(): number {
         if (!this.user) return 0;
-        const total = 50 + this.user.paidCredits;
-        return (this.user.totalUsed / total) * 100;
+        // Usage percentage based on free credits only
+        return (this.user.freeCreditsUsed / 50) * 100;
     }
 
     getStatus(): string {

@@ -82,34 +82,34 @@ export class SuperAdminDashboardComponent implements OnInit {
   }
 
   getUserStatusClass(user: User): string {
-    const totalCredits = user.freeCredits + user.paidCredits;
-    if (totalCredits > 30) return 'bg-green-100 text-green-800';
-    if (totalCredits > 10) return 'bg-yellow-100 text-yellow-800';
+    // Status based on free credits only (paid are unlimited)
+    if (user.freeCredits > 30) return 'bg-green-100 text-green-800';
+    if (user.freeCredits > 10) return 'bg-yellow-100 text-yellow-800';
     return 'bg-red-100 text-red-800';
   }
 
   getUserStatusText(user: User): string {
-    const totalCredits = user.freeCredits + user.paidCredits;
-    if (totalCredits > 30) return 'Active';
-    if (totalCredits > 10) return 'Low';
+    // Status based on free credits only (paid are unlimited)
+    if (user.freeCredits > 30) return 'Active';
+    if (user.freeCredits > 10) return 'Low';
     return 'Critical';
   }
 
   getClientStatusClass(client: Client): string {
-    const avgCredits = client.users.length > 0
-      ? client.users.reduce((sum, u) => sum + u.freeCredits + u.paidCredits, 0) / client.users.length
+    const avgFreeCredits = client.users.length > 0
+      ? client.users.reduce((sum, u) => sum + u.freeCredits, 0) / client.users.length
       : 0;
-    if (avgCredits > 30) return 'bg-green-100 text-green-800';
-    if (avgCredits > 10) return 'bg-yellow-100 text-yellow-800';
+    if (avgFreeCredits > 30) return 'bg-green-100 text-green-800';
+    if (avgFreeCredits > 10) return 'bg-yellow-100 text-yellow-800';
     return 'bg-red-100 text-red-800';
   }
 
   getClientStatusText(client: Client): string {
-    const avgCredits = client.users.length > 0
-      ? client.users.reduce((sum, u) => sum + u.freeCredits + u.paidCredits, 0) / client.users.length
+    const avgFreeCredits = client.users.length > 0
+      ? client.users.reduce((sum, u) => sum + u.freeCredits, 0) / client.users.length
       : 0;
-    if (avgCredits > 30) return 'Healthy';
-    if (avgCredits > 10) return 'Warning';
+    if (avgFreeCredits > 30) return 'Healthy';
+    if (avgFreeCredits > 10) return 'Warning';
     return 'Needs Attention';
   }
 

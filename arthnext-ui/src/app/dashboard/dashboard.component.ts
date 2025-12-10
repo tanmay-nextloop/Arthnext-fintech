@@ -81,7 +81,6 @@ export class DashboardComponent implements OnInit {
       role: role,
       clientId: role !== 'super_admin' ? 'client_1' : 'client_1',
       freeCredits: role === 'user' ? 25 : 50,
-      paidCredits: role === 'user' ? 100 : 0,
       totalUsed: role === 'user' ? 125 : 0,
       freeCreditsUsed: role === 'user' ? 25 : 0,
       paidCreditsUsed: role === 'user' ? 100 : 0,

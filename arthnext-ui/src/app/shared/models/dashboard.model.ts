@@ -10,11 +10,10 @@ export interface User {
   email: string;
   clientId: string;
   role: UserRole;
-  freeCredits: number;        // Max 50, starts at 50
-  paidCredits: number;        // Unlimited, starts at 0
+  freeCredits: number;        // Max 50, starts at 50, decreases with use
   totalUsed: number;          // Total credits used (free + paid)
-  freeCreditsUsed: number;    // How many free credits used
-  paidCreditsUsed: number;    // How many paid credits used
+  freeCreditsUsed: number;    // How many of the 50 free credits have been used
+  paidCreditsUsed: number;    // How many paid credits used (unlimited, billed at $0.10 each)
   department?: string;
   createdAt: Date;
 }

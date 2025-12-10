@@ -148,16 +148,16 @@ export class ClientAdminDashboardComponent implements OnInit {
   }
 
   getUserStatusClass(user: User): string {
-    const totalCredits = user.freeCredits + user.paidCredits;
-    if (totalCredits > 30) return 'bg-green-100 text-green-800';
-    if (totalCredits > 10) return 'bg-yellow-100 text-yellow-800';
+    // Status based on free credits only (paid are unlimited)
+    if (user.freeCredits > 30) return 'bg-green-100 text-green-800';
+    if (user.freeCredits > 10) return 'bg-yellow-100 text-yellow-800';
     return 'bg-red-100 text-red-800';
   }
 
   getUserStatusText(user: User): string {
-    const totalCredits = user.freeCredits + user.paidCredits;
-    if (totalCredits > 30) return 'Active';
-    if (totalCredits > 10) return 'Low';
+    // Status based on free credits only (paid are unlimited)
+    if (user.freeCredits > 30) return 'Active';
+    if (user.freeCredits > 10) return 'Low';
     return 'Critical';
   }
 

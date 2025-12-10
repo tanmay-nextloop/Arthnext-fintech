@@ -182,11 +182,35 @@
                             </span>
                           </td>
                           <td class="px-4 py-3">
-                            <span class="text-sm text-green-600 font-medium">{{ user.freeCredits }}</span>
-                            <span class="text-xs text-gray-500">/ 50</span>
+                            <div class="text-sm">
+                              <div class="flex items-center gap-2 mb-1">
+                                <span class="font-medium text-green-600">{{ user.freeCredits }}</span>
+                                <span class="text-xs text-gray-500">free remaining (of 50)</span>
+                              </div>
+                              <div class="w-full bg-gray-200 rounded-full h-1.5 mb-2">
+                                <div class="bg-green-500 h-1.5 rounded-full"
+                                  [style.width.%]="(user.freeCredits / 50) * 100"></div>
+                              </div>
+                              <div class="text-xs text-gray-500">
+                                Used: {{ user.freeCreditsUsed }} free
+                              </div>
+                            </div>
                           </td>
                           <td class="px-4 py-3">
-                            <span class="text-sm text-purple-600 font-medium">{{ user.paidCredits }}</span>
+                            <div class="text-sm">
+                              <div class="flex items-center gap-2 mb-1">
+                                <span class="font-medium text-purple-600">∞ Unlimited</span>
+                              </div>
+                              <div *ngIf="user.paidCreditsUsed > 0" class="text-xs text-orange-600">
+                                Used: {{ user.paidCreditsUsed }} paid (${{ (user.paidCreditsUsed * 0.10).toFixed(2) }})
+                              </div>
+                              <div *ngIf="user.freeCredits > 0" class="text-xs text-blue-600 mt-1">
+                                ⓘ Paid credits used only after free credits exhausted
+                              </div>
+                              <div *ngIf="user.freeCredits === 0" class="text-xs text-green-600 mt-1">
+                                ✓ Using unlimited paid credits
+                              </div>
+                            </div>
                           </td>
                           <td class="px-4 py-3">
                             <span class="text-sm text-gray-900">{{ user.totalUsed }}</span>
