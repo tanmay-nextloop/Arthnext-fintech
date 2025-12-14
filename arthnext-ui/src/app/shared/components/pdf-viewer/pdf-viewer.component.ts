@@ -6,7 +6,6 @@ import {
   input,
   output,
   signal,
-  computed,
   effect,
   untracked,
   AfterViewInit,
@@ -14,6 +13,7 @@ import {
   Inject
 } from '@angular/core';
 import { CommonModule, isPlatformBrowser } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 
 import type * as pdfjsLibTypes from 'pdfjs-dist';
 declare const pdfjsLib: typeof pdfjsLibTypes;
@@ -29,9 +29,10 @@ export interface SignatureArea {
   signatureId: string;
   userId: string;
   userName: string;
-  pageNumber: number;
+  pageNumber: number | 'all';
   area: Rectangle;
   color: string;
+  isAllPages?: boolean;
 }
 
 export interface User {
@@ -43,9 +44,32 @@ export interface User {
 @Component({
   selector: 'app-pdf-viewer',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, FormsModule],
   template: `
     <div class="pdf-viewer-container">
+      <!-- All Pages Toggle -->
+      <div *ngIf="selectedUser() && selectedPageNumber()" class="all-pages-toggle">
+        <label class="toggle-label">
+          <div class="toggle-wrapper">
+            <input 
+              type="checkbox" 
+              [(ngModel)]="applyToAllPages"
+              (ngModelChange)="onAllPagesToggleChange($event)"
+              class="toggle-checkbox"
+              [disabled]="isDrawing"
+            />
+            <span class="toggle-text">
+              <span class="toggle-icon">🌐</span>
+              Apply signature to ALL pages
+            </span>
+          </div>
+          <span class="toggle-hint">
+            ⓘ One signature will be placed at the same position on every page. 
+            Only one signature per user allowed when this is enabled.
+          </span>
+        </label>
+      </div>
+
       <!-- PDF Thumbnails -->
       <div class="pdf-thumbnails" #pdfContainer></div>
 
@@ -68,7 +92,7 @@ export interface User {
             [style.left.px]="getRemoveButtonPosition(sig).x"
             [style.top.px]="getRemoveButtonPosition(sig).y"
             (click)="onRemoveClick(sig.signatureId)"
-            title="Remove signature"
+            [title]="sig.isAllPages ? 'Remove from all pages' : 'Remove signature'"
           >
             ✕
           </button>
@@ -83,6 +107,62 @@ export interface User {
       width: 100%;
     }
 
+    .all-pages-toggle {
+      background: linear-gradient(135deg, #e8f4f8 0%, #f0f8ff 100%);
+      padding: 15px 20px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      border-left: 4px solid #3498db;
+      box-shadow: 0 2px 6px rgba(52, 152, 219, 0.1);
+    }
+
+    .toggle-label {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .toggle-wrapper {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .toggle-checkbox {
+      width: 20px;
+      height: 20px;
+      cursor: pointer;
+      accent-color: #3498db;
+    }
+
+    .toggle-checkbox:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .toggle-text {
+      font-size: 16px;
+      font-weight: 600;
+      color: #2c3e50;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .toggle-icon {
+      font-size: 18px;
+    }
+
+    .toggle-hint {
+      font-size: 13px;
+      color: #7f8c8d;
+      margin-left: 30px;
+      font-style: italic;
+      line-height: 1.4;
+    }
+
     .pdf-thumbnails {
       display: flex;
       flex-wrap: wrap;
@@ -90,16 +170,37 @@ export interface User {
       padding: 15px;
       background: #f8f9fa;
       border-radius: 8px;
-      max-height: 300px;
+      max-height: 400px;
       overflow-y: auto;
+      overflow-x: hidden;
       scroll-behavior: smooth;
       margin-bottom: 20px;
+    }
+
+    .pdf-thumbnails::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    .pdf-thumbnails::-webkit-scrollbar-track {
+      background: #ecf0f1;
+      border-radius: 4px;
+    }
+
+    .pdf-thumbnails::-webkit-scrollbar-thumb {
+      background: #95a5a6;
+      border-radius: 4px;
+    }
+
+    .pdf-thumbnails::-webkit-scrollbar-thumb:hover {
+      background: #7f8c8d;
     }
 
     .canvas-wrapper {
       position: relative;
       display: inline-block;
       margin-bottom: 20px;
+      max-width: 100%;
+      overflow: hidden;
     }
 
     .canvas-wrapper.hidden {
@@ -113,6 +214,7 @@ export interface User {
       box-shadow: 0 4px 12px rgba(0,0,0,0.15);
       border-radius: 4px;
       max-width: 100%;
+      height: auto;
       background: white;
     }
 
@@ -189,13 +291,13 @@ export class PdfViewerComponent implements AfterViewInit {
   // Local state signals
   loading = signal<boolean>(false);
   selectedPageNumber = signal<number | null>(null);
+  applyToAllPages = false;
   
   // Private state
   private pdfDoc: any = null;
   private signCtx: CanvasRenderingContext2D | null = null;
   private currentRenderTask: any = null;
-  private isDrawing = false;
-  private justFinishedDrawing = false;
+           isDrawing = false;
   private startX = 0;
   private startY = 0;
   private mouseMoveThrottle: any = null;
@@ -216,6 +318,19 @@ export class PdfViewerComponent implements AfterViewInit {
       if (pageNum && sigs) {
         untracked(() => this.renderSelectedPageWithAreas());
       }
+    });
+
+    // Effect to reset toggle when user changes or signatures change
+    effect(() => {
+      const user = this.selectedUser();
+      const sigs = this.signatures();
+      untracked(() => {
+        if (user) {
+          this.updateAllPagesToggle();
+        } else {
+          this.applyToAllPages = false;
+        }
+      });
     });
   }
 
@@ -280,6 +395,8 @@ export class PdfViewerComponent implements AfterViewInit {
         canvas.style.cursor = 'pointer';
         canvas.style.transition = 'all 0.2s ease';
         canvas.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
+        canvas.style.maxWidth = '200px';
+        canvas.style.height = 'auto';
 
         await page.render({ canvasContext: ctx, viewport }).promise;
 
@@ -293,6 +410,7 @@ export class PdfViewerComponent implements AfterViewInit {
         const wrapper = document.createElement('div');
         wrapper.style.position = 'relative';
         wrapper.style.display = 'inline-block';
+        wrapper.style.flexShrink = '0';
 
         const label = document.createElement('div');
         label.textContent = `Page ${i}`;
@@ -308,6 +426,7 @@ export class PdfViewerComponent implements AfterViewInit {
           font-size: 11px;
           font-weight: 600;
           pointer-events: none;
+          white-space: nowrap;
         `;
 
         wrapper.appendChild(canvas);
@@ -349,7 +468,59 @@ export class PdfViewerComponent implements AfterViewInit {
       }
     }
 
+    this.updateAllPagesToggle();
     await this.renderSelectedPageWithAreas();
+  }
+
+  private updateAllPagesToggle() {
+    const user = this.selectedUser();
+    if (!user) {
+      this.applyToAllPages = false;
+      return;
+    }
+
+    // Check if current user has an 'all pages' signature
+    const allPagesSig = this.signatures().find(
+      s => s.userId === user.id && s.isAllPages
+    );
+    
+    this.applyToAllPages = !!allPagesSig;
+  }
+
+  onAllPagesToggleChange(checked: boolean) {
+    const user = this.selectedUser();
+    if (!user) return;
+
+    console.log('Toggle changed to:', checked);
+
+    if (!checked) {
+      // Switched OFF - remove all-pages signature if exists
+      const allPagesSig = this.signatures().find(
+        s => s.userId === user.id && s.isAllPages
+      );
+      
+      if (allPagesSig) {
+        console.log('Removing all-pages signature:', allPagesSig.signatureId);
+        this.signatureRemoveRequested.emit(allPagesSig.signatureId);
+      }
+    } else {
+      // Switched ON - remove all individual page signatures for this user
+      const individualSigs = this.signatures().filter(
+        s => s.userId === user.id && !s.isAllPages
+      );
+      
+      if (individualSigs.length > 0) {
+        console.log('Removing individual signatures:', individualSigs.length);
+        individualSigs.forEach(sig => {
+          this.signatureRemoveRequested.emit(sig.signatureId);
+        });
+      }
+    }
+
+    // Re-render after a short delay to allow state to update
+    setTimeout(() => {
+      this.renderSelectedPageWithAreas();
+    }, 100);
   }
 
   private async renderSelectedPageWithAreas() {
@@ -372,9 +543,9 @@ export class PdfViewerComponent implements AfterViewInit {
       await this.currentRenderTask.promise;
       this.currentRenderTask = null;
 
-      const pageSignatures = this.signatures().filter(s => s.pageNumber === pageNum);
+      const pageSignatures = this.getPageSignatures();
       pageSignatures.forEach(sig => {
-        this.drawRectangle(sig.area, sig.color, sig.userName);
+        this.drawRectangle(sig.area, sig.color, sig.userName, sig.isAllPages);
       });
     } catch (error: any) {
       if (error.name !== 'RenderingCancelledException') {
@@ -383,7 +554,7 @@ export class PdfViewerComponent implements AfterViewInit {
     }
   }
 
-  private drawRectangle(rect: Rectangle, color: string, label: string) {
+  private drawRectangle(rect: Rectangle, color: string, label: string, isAllPages?: boolean) {
     if (!this.signCtx) return;
 
     this.signCtx.strokeStyle = color;
@@ -394,15 +565,17 @@ export class PdfViewerComponent implements AfterViewInit {
     this.signCtx.fillRect(rect.x, rect.y, rect.width, rect.height);
     this.signCtx.setLineDash([]);
 
+    const displayLabel = isAllPages ? `${label} (ALL PAGES)` : label;
+
     this.signCtx.fillStyle = color;
     this.signCtx.font = 'bold 14px Arial';
-    const textMetrics = this.signCtx.measureText(label);
+    const textMetrics = this.signCtx.measureText(displayLabel);
     const textWidth = textMetrics.width;
     const textHeight = 16;
 
     this.signCtx.fillRect(rect.x, rect.y - textHeight - 6, textWidth + 10, textHeight + 6);
     this.signCtx.fillStyle = 'white';
-    this.signCtx.fillText(label, rect.x + 5, rect.y - 8);
+    this.signCtx.fillText(displayLabel, rect.x + 5, rect.y - 8);
   }
 
   onMouseDown(event: MouseEvent) {
@@ -417,6 +590,25 @@ export class PdfViewerComponent implements AfterViewInit {
       this.errorOccurred.emit('Please select a user first!');
       return;
     }
+
+    // Check if user already has a signature on this page (or all pages)
+    const hasAllPagesSig = this.signatures().some(s => 
+      s.userId === user.id && s.isAllPages
+    );
+    
+    const hasPageSig = this.signatures().some(s => 
+      s.userId === user.id && !s.isAllPages && s.pageNumber === pageNum
+    );
+
+    // if (hasAllPagesSig) {
+    //   this.errorOccurred.emit('User already has a signature for ALL PAGES! Remove it first to add a new one.');
+    //   return;
+    // }
+
+    // if (hasPageSig) {
+    //   this.errorOccurred.emit('User already has a signature on this page! Remove it first to add a new one.');
+    //   return;
+    // }
     
     if (!this.signCanvas) return;
 
@@ -437,14 +629,13 @@ export class PdfViewerComponent implements AfterViewInit {
     
     if (!this.isDrawing || !pageNum || !this.signCtx || !user || !this.signCanvas) return;
 
-    // Throttle mouse move events to reduce flickering
     if (this.mouseMoveThrottle) {
       return;
     }
 
     this.mouseMoveThrottle = setTimeout(() => {
       this.mouseMoveThrottle = null;
-    }, 16); // ~60fps
+    }, 16);
 
     const canvas = this.signCanvas.nativeElement;
     const rect = canvas.getBoundingClientRect();
@@ -475,9 +666,9 @@ export class PdfViewerComponent implements AfterViewInit {
       const renderTask = page.render({ canvasContext: this.signCtx, viewport });
       await renderTask.promise;
 
-      const pageSignatures = this.signatures().filter(s => s.pageNumber === pageNum);
+      const pageSignatures = this.getPageSignatures();
       pageSignatures.forEach(sig => {
-        this.drawRectangle(sig.area, sig.color, sig.userName);
+        this.drawRectangle(sig.area, sig.color, sig.userName, sig.isAllPages);
       });
 
       const currentColor = user.color;
@@ -518,15 +709,11 @@ export class PdfViewerComponent implements AfterViewInit {
     };
 
     this.isDrawing = false;
-    this.justFinishedDrawing = true;
-
-    setTimeout(() => {
-      this.justFinishedDrawing = false;
-    }, 300);
 
     if (area.width > 20 && area.height > 20) {
-      if (this.checkOverlap(area, pageNum)) {
-        this.errorOccurred.emit('Signature area overlaps with an existing signature!');
+      // Check overlap with other users' signatures
+      if (this.checkOverlapWithOthers(area, pageNum, user.id)) {
+        this.errorOccurred.emit('Signature area overlaps with another user\'s signature!');
         this.renderSelectedPageWithAreas();
         return;
       }
@@ -535,9 +722,10 @@ export class PdfViewerComponent implements AfterViewInit {
         signatureId: `sig_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         userId: user.id,
         userName: user.name,
-        pageNumber: pageNum,
+        pageNumber: this.applyToAllPages ? 'all' : pageNum,
         area: area,
-        color: user.color
+        color: user.color,
+        isAllPages: this.applyToAllPages
       };
 
       this.signatureAdded.emit(userSignature);
@@ -560,7 +748,11 @@ export class PdfViewerComponent implements AfterViewInit {
   getPageSignatures(): SignatureArea[] {
     const pageNum = this.selectedPageNumber();
     if (!pageNum) return [];
-    return this.signatures().filter(s => s.pageNumber === pageNum);
+    
+    return this.signatures().filter(s => {
+      if (s.isAllPages) return true;
+      return s.pageNumber === pageNum;
+    });
   }
 
   getRemoveButtonPosition(sig: SignatureArea): { x: number; y: number } {
@@ -569,19 +761,29 @@ export class PdfViewerComponent implements AfterViewInit {
     const canvas = this.signCanvas.nativeElement;
     const rect = canvas.getBoundingClientRect();
     
-    // Scale from canvas coordinates to display coordinates
     const scaleX = rect.width / canvas.width;
     const scaleY = rect.height / canvas.height;
     
-    // Position button at top-right corner of signature
     const x = (sig.area.x + sig.area.width) * scaleX;
     const y = sig.area.y * scaleY;
     
     return { x, y };
   }
 
-  private checkOverlap(newArea: Rectangle, pageNumber: number): boolean {
-    const pageSignatures = this.signatures().filter(s => s.pageNumber === pageNumber);
+  private userHasSignatureOnPage(userId: string, pageNumber: number): boolean {
+    return this.signatures().some(s => {
+      if (s.userId !== userId) return false;
+      if (s.isAllPages) return true;
+      return s.pageNumber === pageNumber;
+    });
+  }
+
+  private checkOverlapWithOthers(newArea: Rectangle, pageNumber: number, currentUserId: string): boolean {
+    const pageSignatures = this.signatures().filter(s => {
+      if (s.userId === currentUserId) return false; // Ignore current user
+      if (s.isAllPages) return true;
+      return s.pageNumber === pageNumber;
+    });
 
     for (const sig of pageSignatures) {
       if (this.rectanglesOverlap(newArea, sig.area)) {

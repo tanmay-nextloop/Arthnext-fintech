@@ -6,7 +6,7 @@ export interface SignatureArea {
   signatureId: string;
   userId: string;
   userName: string;
-  pageNumber: number;
+  pageNumber: number | 'all';
   area: {
     x: number;
     y: number;
@@ -14,6 +14,7 @@ export interface SignatureArea {
     height: number;
   };
   color: string;
+  isAllPages?: boolean;
 }
 
 @Component({
@@ -34,7 +35,7 @@ export interface SignatureArea {
           >
             ▶
           </span>
-          Signature Areas ({{ signatureCount() }} total)
+          📝 Signature Areas ({{ signatureCount() }} total)
         </h3>
         <div class="actions" (click)="$event.stopPropagation()">
           <button 
@@ -42,7 +43,7 @@ export interface SignatureArea {
             class="btn btn-clear"
             [disabled]="signatureCount() === 0"
           >
-            Clear All
+            🗑️ Clear All
           </button>
         </div>
       </div>
@@ -51,9 +52,47 @@ export interface SignatureArea {
         class="signatures-content" 
         [class.collapsed]="!isOpen()"
       >
-        <div *ngFor="let page of pages()" class="page-group">
+        <!-- All Pages Signatures Section -->
+        <div *ngIf="allPagesSignatures().length > 0" class="page-group all-pages-group">
+          <h4 class="page-group-header all-pages-header">
+            🌐 ALL PAGES
+            <span class="page-count">
+              ({{ allPagesSignatures().length }} signature(s) applied to all pages)
+            </span>
+          </h4>
+          
+          <div class="signatures-grid">
+            <div 
+              *ngFor="let sig of allPagesSignatures()" 
+              class="signature-card-compact all-pages-card" 
+              [style.border-left-color]="sig.color"
+            >
+              <div class="sig-content">
+                <div class="sig-user" [style.color]="sig.color">
+                  <span class="user-icon">👤</span>
+                  <strong>{{ sig.userName }}</strong>
+                  <span class="all-pages-badge">ALL PAGES</span>
+                </div>
+                <div class="sig-coords">
+                  Position: ({{ sig.area.x | number:'1.0-0' }}, {{ sig.area.y | number:'1.0-0' }})
+                  • Size: {{ sig.area.width | number:'1.0-0' }} × {{ sig.area.height | number:'1.0-0' }}
+                </div>
+              </div>
+              <button 
+                (click)="handleRemoveSignature(sig.signatureId)" 
+                class="btn-remove-compact"
+                title="Remove from all pages"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Individual Page Signatures -->
+        <div *ngFor="let page of specificPages()" class="page-group">
           <h4 class="page-group-header">
-             Page {{ page }} 
+            📄 Page {{ page }} 
             <span class="page-count">
               ({{ getSignaturesByPage(page).length }} signature(s))
             </span>
@@ -161,6 +200,14 @@ export interface SignatureArea {
       margin-bottom: 0;
     }
 
+    .all-pages-group {
+      background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%);
+      padding: 15px;
+      border-radius: 8px;
+      border: 2px solid #667eea;
+      margin-bottom: 20px;
+    }
+
     .page-group-header {
       color: #34495e;
       font-size: 14px;
@@ -174,10 +221,20 @@ export interface SignatureArea {
       gap: 8px;
     }
 
+    .all-pages-header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      font-size: 15px;
+    }
+
     .page-count {
       font-size: 12px;
       color: #7f8c8d;
       font-weight: normal;
+    }
+
+    .all-pages-header .page-count {
+      color: rgba(255, 255, 255, 0.9);
     }
 
     .signatures-grid {
@@ -205,6 +262,16 @@ export interface SignatureArea {
       transform: translateX(2px);
     }
 
+    .all-pages-card {
+      background: white;
+      border-left-width: 4px;
+    }
+
+    .all-pages-card:hover {
+      background: #f0f8ff;
+      box-shadow: 0 3px 10px rgba(102, 126, 234, 0.2);
+    }
+
     .sig-content {
       flex: 1;
       min-width: 0;
@@ -230,6 +297,19 @@ export interface SignatureArea {
     .sig-user strong {
       overflow: hidden;
       text-overflow: ellipsis;
+    }
+
+    .all-pages-badge {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 10px;
+      font-weight: 700;
+      margin-left: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      flex-shrink: 0;
     }
 
     .sig-coords {
@@ -291,22 +371,29 @@ export interface SignatureArea {
   `]
 })
 export class SignatureListComponent {
-  // Input signals (read-only from parent)
   signatures = input<SignatureArea[]>([]);
   startOpen = input<boolean>(true);
 
-  // Output signals (emit events to parent)
   signatureRemoved = output<string>();
   clearAllRequested = output<void>();
 
-  // Local state signal
   isOpen = signal<boolean>(true);
 
-  // Computed signals (auto-update when dependencies change)
   signatureCount = computed(() => this.signatures().length);
   
-  pages = computed(() => {
-    const pageSet = new Set(this.signatures().map(s => s.pageNumber));
+  // Computed: All signatures marked as "all pages"
+  allPagesSignatures = computed(() => 
+    this.signatures().filter(s => s.isAllPages)
+  );
+
+  // Computed: Get unique page numbers for specific page signatures
+  specificPages = computed(() => {
+    const pageSet = new Set<number>();
+    this.signatures().forEach(s => {
+      if (!s.isAllPages && typeof s.pageNumber === 'number') {
+        pageSet.add(s.pageNumber);
+      }
+    });
     return Array.from(pageSet).sort((a, b) => a - b);
   });
 
@@ -319,7 +406,9 @@ export class SignatureListComponent {
   }
 
   getSignaturesByPage(page: number): SignatureArea[] {
-    return this.signatures().filter(s => s.pageNumber === page);
+    return this.signatures().filter(s => 
+      !s.isAllPages && s.pageNumber === page
+    );
   }
 
   handleRemoveSignature(signatureId: string) {

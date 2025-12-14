@@ -1,3 +1,4 @@
+// signature.models.ts
 export interface Rectangle {
   x: number;
   y: number;
@@ -16,9 +17,10 @@ export interface SignatureArea {
   signatureId: string;
   userId: string;
   userName: string;
-  pageNumber: number;
+  pageNumber: number | 'all'; // Support 'all' for all pages
   area: Rectangle;
   color: string;
+  isAllPages?: boolean; // Flag to indicate if this applies to all pages
 }
 
 export interface ApiPayload {
@@ -26,4 +28,11 @@ export interface ApiPayload {
   priority: string;
   pdfFile: File | null;
   signatures: SignatureArea[];
+}
+
+export interface SignerPayload {
+  aadhaar: string;
+  name: string;
+  coordinates: { [page: string]: Rectangle };
+  pages: (number | 'all')[];
 }
