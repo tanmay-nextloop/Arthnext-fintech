@@ -1,23 +1,17 @@
 <div class="container">
-  <h2>Multi-Signer PDF</h2>
+  <h2>✍️ Multi-Signer PDF</h2>
 
-  <!-- Step 0: Document Metadata -->
-  <div class="step-section metadata-section">
-    <h3> Document Information</h3>
-    <div class="metadata-form">
+  <!-- Document Info -->
+  <div class="step-section">
+    <h3>📄 Document Information</h3>
+    <div class="form-row">
       <div class="form-group">
-        <label for="docType">Document Type *</label>
-        <input
-          id="docType"
-          type="text"
-          [(ngModel)]="documentType"
-          placeholder="e.g., Contract, Agreement"
-          class="form-control"
-        />
+        <label>Document Type *</label>
+        <input type="text" [(ngModel)]="documentType" placeholder="e.g., Contract" class="form-control" />
       </div>
       <div class="form-group">
-        <label for="priority">Priority *</label>
-        <select id="priority" [(ngModel)]="priority" class="form-control">
+        <label>Priority *</label>
+        <select [(ngModel)]="priority" class="form-control">
           <option value="">Select Priority</option>
           <option value="high">High</option>
           <option value="medium">Medium</option>
@@ -27,81 +21,64 @@
     </div>
   </div>
 
-  <!-- Step 1: Upload PDF -->
+  <!-- Upload PDF -->
   <div class="step-section">
-    <h3> Upload PDF Document</h3>
-    <input
-      type="file"
-      accept="application/pdf"
-      (change)="onFileChange($event)"
-      class="file-input"
-    />
-    <p *ngIf="uploadedFile" class="file-name">
-      Selected: {{ uploadedFile.name }}
-    </p>
+    <h3>📤 Upload PDF</h3>
+    <input type="file" accept="application/pdf" (change)="onFileChange($event)" class="file-input" />
+    <p *ngIf="uploadedFile" class="file-name">📄 {{ uploadedFile.name }}</p>
   </div>
 
-  <!-- Step 2: Add Users -->
+  <!-- Add Users -->
   <div *ngIf="uploadedFile" class="step-section">
-    <h3> Manage Signers</h3>
+    <h3>👥 Signers</h3>
     
-    <button 
-      *ngIf="!showAddUserForm" 
-      (click)="showAddUserForm = true" 
-      class="btn btn-add-user"
-    >
-       Add New Signer
+    <button *ngIf="!showAddUserForm" (click)="showAddUserForm = true" class="btn btn-add">
+      ➕ Add Signer
     </button>
 
-    <div *ngIf="showAddUserForm" class="add-user-form">
-      <input
-        [(ngModel)]="newUserName"
-        placeholder="Full name"
-        class="user-input"
-      />
-      <input
-        [(ngModel)]="newUserAadhar"
-        placeholder="Aadhar Number"
-        class="user-input"
-      />
+    <div *ngIf="showAddUserForm" class="add-form">
+      <input [(ngModel)]="newUserName" placeholder="Full name" class="form-control" />
+      <input [(ngModel)]="newUserAadhar" placeholder="Aadhar Number" class="form-control" />
       <div class="form-actions">
-        <button (click)="addUser()" class="btn btn-save">✓ Add</button>
-        <button 
-          (click)="showAddUserForm = false; newUserName = ''; newUserAadhar = ''" 
-          class="btn btn-cancel"
-        >
+        <button (click)="addUser()" class="btn btn-primary">✓ Add</button>
+        <button (click)="showAddUserForm = false; newUserName = ''; newUserAadhar = ''" class="btn btn-secondary">
           ✕ Cancel
         </button>
       </div>
     </div>
 
     <div *ngIf="users.length > 0" class="users-list">
-      <div 
-        *ngFor="let user of users" 
-        class="user-card"
-        [class.selected]="selectedUser?.id === user.id"
-        [style.border-left-color]="user.color"
-        (click)="selectUser(user)"
-      >
-        <div class="user-details">
+      <div *ngFor="let user of users" 
+           class="user-card"
+           [class.selected]="selectedUser?.id === user.id"
+           [class.complete]="isUserComplete(user.id)"
+           [style.border-left-color]="user.color"
+           (click)="selectUser(user)">
+        <div class="user-info">
           <div class="user-name" [style.color]="user.color">
             {{ user.name }}
+            <span *ngIf="isUserComplete(user.id)" class="badge-complete">✓</span>
           </div>
-          <div *ngIf="user.email" class="user-email">
-            Aadhar: {{ user.email }}
+          <div *ngIf="user.email" class="user-email">{{ user.email }}</div>
+          <div class="user-stats">
+            <span [class.done]="hasUserSignature(user.id)">
+              {{ hasUserSignature(user.id) ? '✓' : '○' }} Signature
+            </span>
+            <span [class.done]="getVisualCount(user.id) > 0">
+              {{ getVisualCount(user.id) > 0 ? '✓' : '○' }} Visual ({{ getVisualCount(user.id) }})
+            </span>
+            <span [class.done]="getCryptoCount(user.id) === 1">
+              {{ getCryptoCount(user.id) === 1 ? '✓' : '○' }} Crypto ({{ getCryptoCount(user.id) }}/1)
+            </span>
           </div>
         </div>
         <div class="user-actions">
-          <span 
-            *ngIf="getUserSignatureCount(user.id) > 0" 
-            class="signed-badge"
-          >
-            ✓ {{ getUserSignatureCount(user.id) }} Sign{{getUserSignatureCount(user.id) > 1 ? 's' : ''}}
-          </span>
-          <button 
-            (click)="removeUser(user.id); $event.stopPropagation()" 
-            class="btn-remove-user"
-          >
+          <button (click)="openSignatureCreator(user); $event.stopPropagation()" 
+                  class="btn-icon" 
+                  [title]="hasUserSignature(user.id) ? 'Edit' : 'Create'">
+            {{ hasUserSignature(user.id) ? '✏️' : '✍️' }}
+          </button>
+          <button (click)="removeUser(user.id); $event.stopPropagation()" class="btn-icon btn-remove">
             ✕
           </button>
         </div>
@@ -109,126 +86,134 @@
     </div>
   </div>
 
-  <!-- Step 3 & 4: PDF Viewer Component (REPLACES HUGE CANVAS CODE!) -->
-  <div *ngIf="selectedUser" class="step-section">
-    <h3> Draw Signature Areas</h3>
-    <div class="current-user-info">
-      <span class="user-badge" [style.background-color]="selectedUser.color">
-        {{ selectedUser.name }}
-      </span>
-      <p class="instruction">
-        <strong>Instructions:</strong> Select a page below, then drag to create signature box.
-        Click on any signature box to remove it.
-      </p>
-    </div>
-  </div>
-
-  <!--  PDF VIEWER COMPONENT  -->
-  <!-- <app-pdf-viewer
-    [file]="uploadedFile"
-    [selectedUser]="selectedUser"
-    [signatures]="signatures"
-    (pageSelected)="onPageSelected($event)"
-    (signatureAdded)="onSignatureAdded($event)"
-    (signatureRemoveRequested)="onSignatureRemoveRequested($event)"
-    (errorOccurred)="onPdfError($event)"
-  ></app-pdf-viewer> -->
-    <app-pdf-viewer
-    [file]="uploadedFile"
-    [selectedUser]="selectedUser"
-    [signatures]="signatures"
-    (pageSelected)="onPageSelected($event)"
-    (signatureAdded)="onSignatureAdded($event)"
-    (signatureRemoveRequested)="onSignatureRemoveRequested($event)"
-    (errorOccurred)="onPdfError($event)"
-  ></app-pdf-viewer>
-
-  <!-- Signatures Summary -->
-  <!-- <div *ngIf="signatures.length > 0" class="signatures-section">
-    <div 
-      class="section-header" 
-      (click)="toggleSignaturesDropdown()" 
-      style="cursor: pointer;"
-    >
-      <h3>
-        <span 
-          class="dropdown-arrow" 
-          [class.open]="signaturesDropdownOpen"
-        >
-          ▶
-        </span>
-         Signature Areas ({{ signatures.length }} total)
-      </h3>
-      <div class="actions" (click)="$event.stopPropagation()">
-        <button 
-          (click)="clearAllSignatures()" 
-          class="btn btn-clear"
-        >
-           Clear All
-        </button>
+  <!-- PDF Viewer -->
+  <div *ngIf="selectedUser && hasUserSignature(selectedUser.id)" class="step-section">
+    <h3>📝 Place Signatures on PDF</h3>
+    
+    <div class="info-box">
+      <div class="info-step">
+        <span class="step-num">1</span>
+        <span>Draw boxes on PDF to place visual signatures</span>
+      </div>
+      <div class="info-step">
+        <span class="step-num">2</span>
+        <span>Promote ONE visual signature to cryptographic</span>
       </div>
     </div>
-    
-    <div 
-      class="signatures-content" 
-      [class.collapsed]="!signaturesDropdownOpen"
-    >
-      <div *ngFor="let page of getPagesWithSignatures()" class="page-group">
-        <h4 class="page-group-header">
-           Page {{ page }} 
-          <span class="page-count">
-            ({{ getSignaturesByPage().get(page)?.length }} signature(s))
-          </span>
-        </h4>
-        
-        <div class="signatures-grid">
-          <div 
-            *ngFor="let sig of getSignaturesByPage().get(page)" 
-            class="signature-card-compact" 
-            [style.border-left-color]="sig.color"
-          >
-            <div class="sig-content">
-              <div class="sig-user" [style.color]="sig.color">
-                <span class="user-icon">👤</span>
-                <strong>{{ sig.userName }}</strong>
-              </div>
-              <div class="sig-coords">
-                Position: ({{ sig.area.x | number:'1.0-0' }}, {{ sig.area.y | number:'1.0-0' }})
-                • Size: {{ sig.area.width | number:'1.0-0' }} × {{ sig.area.height | number:'1.0-0' }}
-              </div>
-            </div>
-            <button 
-              (click)="removeSignature(sig.signatureId)" 
-              class="btn-remove-compact"
-            >
+
+    <div class="current-user">
+      <span class="user-badge" [style.background]="selectedUser.color">
+        {{ selectedUser.name }}
+      </span>
+      <img *ngIf="getUserSignatureImage(selectedUser.id)" 
+           [src]="getUserSignatureImage(selectedUser.id)" 
+           class="sig-preview" />
+    </div>
+
+    <app-pdf-viewer
+      [file]="uploadedFile"
+      [selectedUser]="selectedUser"
+      [signatures]="visualSignatures"
+      [userSignatureImage]="getUserSignatureImage(selectedUser.id)"
+      [userSignatureImages]="getUserSignaturesMap()"
+      (pageSelected)="onPageSelected($event)"
+      (signatureAdded)="onSignatureAdded($event)"
+      (signatureRemoveRequested)="onSignatureRemoveRequested($event)"
+      (errorOccurred)="onPdfError($event)">
+    </app-pdf-viewer>
+  </div>
+
+  <!-- Signature Management -->
+  <div *ngIf="visualSignatures.length > 0" class="step-section">
+    <h3>📋 Signature Management</h3>
+
+    <!-- Visual Signatures -->
+    <div *ngIf="getVisualOnly().length > 0" class="sig-section">
+      <h4>🎨 Visual Signatures</h4>
+      <div class="sig-grid">
+        <div *ngFor="let sig of getVisualOnly()" class="sig-card" [style.border-left-color]="sig.color">
+          <div class="sig-info">
+            <strong [style.color]="sig.color">{{ sig.userName }}</strong>
+            <span class="sig-detail">Page {{ sig.pageNumber }}</span>
+          </div>
+          <div class="sig-actions">
+            <button (click)="promoteToCrypto(sig.signatureId)" class="btn-promote">
+              🔒 Make Crypto
+            </button>
+            <button (click)="onSignatureRemoveRequested(sig.signatureId)" class="btn-icon btn-remove">
               ✕
             </button>
           </div>
         </div>
       </div>
     </div>
-  </div> -->
 
- <app-signature-list
-        [signatures]="signatures"
-        (signatureRemoved)="handleListRemove($event)"
-        (clearAllRequested)="handleClearAll()"
-      ></app-signature-list>
-  <!-- Submit Section -->
-  <div *ngIf="uploadedFile && users.length > 0" class="submit-section">
-    <button 
-      (click)="submitToAPI()" 
-      [disabled]="submitting || !documentType || !priority || signatures.length === 0"
-      class="btn btn-submit"
-    >
-      <span *ngIf="!submitting"> Submit for eSign</span>
-      <span *ngIf="submitting"> Submitting...</span>
+    <!-- Crypto Signatures -->
+    <div *ngIf="getCryptoSignatures().length > 0" class="sig-section crypto-section">
+      <h4>🔒 Cryptographic Signatures</h4>
+      <div class="sig-grid">
+        <div *ngFor="let sig of getCryptoSignatures()" class="sig-card crypto">
+          <div class="sig-info">
+            <strong style="color: #e67e22;">{{ sig.userName }}</strong>
+            <span class="sig-detail">Page {{ sig.pageNumber }}</span>
+          </div>
+          <div class="sig-actions">
+            <span class="badge-crypto">✓ CRYPTO</span>
+            <button (click)="demoteFromCrypto(sig.signatureId)" class="btn-icon">
+              ⬇️
+            </button>
+            <button (click)="onSignatureRemoveRequested(sig.signatureId)" class="btn-icon btn-remove">
+              ✕
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <button (click)="clearAllSignatures()" class="btn btn-danger">
+      🗑️ Clear All
     </button>
-    <p *ngIf="signatures.length === 0" class="submit-warning">
-       Please add at least one signature area
-    </p>
   </div>
 
-  <!--  MODAL COMPONENT - Replaces all alert() calls! -->
+  <!-- Submit -->
+  <div *ngIf="uploadedFile && users.length > 0" class="step-section submit-section">
+    <h3>🚀 Ready to Submit</h3>
+    
+    <div class="summary">
+      <div class="summary-item">
+        <span class="label">Total Signers</span>
+        <span class="value">{{ users.length }}</span>
+      </div>
+      <div class="summary-item">
+        <span class="label">Visual Signatures</span>
+        <span class="value">{{ getVisualOnly().length }}</span>
+      </div>
+      <div class="summary-item">
+        <span class="label">Crypto Signatures</span>
+        <span class="value crypto">{{ getCryptoSignatures().length }}</span>
+      </div>
+    </div>
+
+    <button (click)="submitToAPI()" 
+            [disabled]="submitting || !documentType || !priority || getCryptoSignatures().length !== users.length"
+            class="btn btn-submit">
+      {{ submitting ? '⏳ Submitting...' : '🚀 Submit for eSign' }}
+    </button>
+
+    <div class="checklist">
+      <div class="check-item" [class.done]="documentType">
+        {{ documentType ? '✓' : '○' }} Document Type
+      </div>
+      <div class="check-item" [class.done]="priority">
+        {{ priority ? '✓' : '○' }} Priority
+      </div>
+      <div class="check-item" [class.done]="getCryptoSignatures().length === users.length">
+        {{ getCryptoSignatures().length === users.length ? '✓' : '○' }} All signers ready
+      </div>
+    </div>
+  </div>
+
+  <!-- Modals -->
+  <app-signature-drawing-modal (signatureSaved)="onSignatureSaved($event)"></app-signature-drawing-modal>
   <app-modal></app-modal>
 </div>

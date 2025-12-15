@@ -1,15 +1,14 @@
-import { Component } from '@angular/core';
+import { Component, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpClient, HttpClientModule } from '@angular/common/http';
 import { Router } from '@angular/router';
 
-// Import from shared - CLEAN!
 import { ModalComponent } from '../shared/components/modal/modal.component';
 import { ModalService } from '../shared/services/modal.service';
 import { PdfViewerComponent } from '../shared/components/pdf-viewer/pdf-viewer.component';
-import { User, SignatureArea } from '../shared/models/signature.models';
-import { SignatureListComponent } from '../shared/components/signature-list/'
+import { User, SignatureArea, VisualSignatureArea } from '../shared/models/signature.models';
+import { SignatureDrawingModalComponent, DrawnSignature } from '../shared/components/signature-drawing-modal/signature-drawing-modal.component';
 
 @Component({
   selector: 'app-multisignature',
@@ -18,14 +17,16 @@ import { SignatureListComponent } from '../shared/components/signature-list/'
     CommonModule,
     FormsModule,
     HttpClientModule,
-    ModalComponent,       // ← Shared component
-    PdfViewerComponent,    // ← Shared component
-    SignatureListComponent
+    ModalComponent,
+    PdfViewerComponent,
+    SignatureDrawingModalComponent
   ],
   templateUrl: './multisignature.component.html',
   styleUrls: ['./multisignature.component.scss']
 })
 export class MultisignatureComponent {
+  @ViewChild(SignatureDrawingModalComponent) signatureModal?: SignatureDrawingModalComponent;
+
   // Document metadata
   documentType = '';
   priority = '';
@@ -38,11 +39,12 @@ export class MultisignatureComponent {
   newUserAadhar = '';
   showAddUserForm = false;
 
-  // Signatures
-  signatures: SignatureArea[] = [];
+  // Signature storage
+  userSignatures = new Map<string, DrawnSignature>(); // userId -> their drawn signature
+  visualSignatures: VisualSignatureArea[] = []; // Visual signatures placed on PDF
+  cryptoSignatureIds = new Set<string>(); // IDs of signatures marked as crypto
 
   // UI State
-  signaturesDropdownOpen = true;
   submitting = false;
 
   // Colors
@@ -57,10 +59,10 @@ export class MultisignatureComponent {
   initiateAPI = 'https://peakily-idioplasmatic-kimbra.ngrok-free.dev/api/v1/esign/initiate';
 
   constructor(
-    private modalService: ModalService,  // ← Injected service
+    private modalService: ModalService,
     private http: HttpClient,
     private router: Router
-  ) { }
+  ) {}
 
   // File handling
   onFileChange(event: Event) {
@@ -71,11 +73,7 @@ export class MultisignatureComponent {
   // User management
   addUser() {
     if (!this.newUserName.trim()) {
-      this.modalService.showAlert(
-        'Validation Error',
-        'Please enter a user name!',
-        'warning'
-      );
+      this.modalService.showAlert('Validation Error', 'Please enter a user name!', 'warning');
       return;
     }
 
@@ -92,19 +90,47 @@ export class MultisignatureComponent {
     this.newUserName = '';
     this.newUserAadhar = '';
     this.showAddUserForm = false;
+
+    // Open signature modal
+    this.selectedUser = user;
+    setTimeout(() => {
+      this.signatureModal?.openModal();
+    }, 100);
   }
 
   selectUser(user: User) {
+    // Check if user has signature
+    if (!this.userSignatures.has(user.id)) {
+      this.modalService.showAlert(
+        'Create Signature First',
+        'Please create your signature before placing it on the PDF.',
+        'warning'
+      );
+      this.selectedUser = user;
+      setTimeout(() => {
+        this.signatureModal?.openModal();
+      }, 100);
+      return;
+    }
     this.selectedUser = user;
   }
 
   removeUser(userId: string) {
     this.modalService.showConfirm(
       'Remove User',
-      'Are you sure? This will also remove all their signatures.',
+      'This will remove all their signatures too.',
       () => {
         this.users = this.users.filter(u => u.id !== userId);
-        this.signatures = this.signatures.filter(s => s.userId !== userId);
+        this.visualSignatures = this.visualSignatures.filter(s => s.userId !== userId);
+        this.userSignatures.delete(userId);
+        
+        // Remove from crypto set
+        this.visualSignatures.forEach(sig => {
+          if (sig.userId === userId) {
+            this.cryptoSignatureIds.delete(sig.signatureId);
+          }
+        });
+        
         if (this.selectedUser?.id === userId) {
           this.selectedUser = null;
         }
@@ -112,204 +138,362 @@ export class MultisignatureComponent {
     );
   }
 
-  // PDF Viewer event handlers
+  openSignatureCreator(user: User) {
+    this.selectedUser = user;
+    setTimeout(() => {
+      this.signatureModal?.openModal();
+    }, 100);
+  }
+
+  onSignatureSaved(signature: DrawnSignature) {
+    if (!this.selectedUser) return;
+
+    this.userSignatures.set(this.selectedUser.id, signature);
+    
+    this.modalService.showAlert(
+      'Success',
+      'Signature saved! Now place it on the PDF by drawing boxes.',
+      'info'
+    );
+  }
+
+  // Get all user signatures as Map for PDF viewer
+  getUserSignaturesMap(): Map<string, string> {
+    const map = new Map<string, string>();
+    this.userSignatures.forEach((sig, userId) => {
+      map.set(userId, sig.imageData);
+    });
+    return map;
+  }
+
+  // Generate signed PDF with visual signatures
+  async generateSignedPDF(): Promise<Blob | null> {
+    if (!this.uploadedFile) {
+      console.error('No uploaded file');
+      return null;
+    }
+
+    console.log('Generating signed PDF...');
+    console.log('Visual signatures to embed:', this.visualSignatures.length);
+
+    try {
+      // Import pdf-lib
+      const { PDFDocument } = await import('pdf-lib');
+      console.log('pdf-lib imported successfully');
+      
+      // Load the original PDF
+      const arrayBuffer = await this.uploadedFile.arrayBuffer();
+      console.log('PDF loaded, size:', arrayBuffer.byteLength);
+      
+      const pdfDoc = await PDFDocument.load(arrayBuffer);
+      console.log('PDFDocument created');
+      
+      // Get all pages
+      const pages = pdfDoc.getPages();
+      console.log('Total pages:', pages.length);
+
+      // Group signatures by page
+      const signaturesByPage = new Map<number, VisualSignatureArea[]>();
+      this.visualSignatures.forEach(sig => {
+        if (!signaturesByPage.has(sig.pageNumber)) {
+          signaturesByPage.set(sig.pageNumber, []);
+        }
+        signaturesByPage.get(sig.pageNumber)!.push(sig);
+      });
+
+      console.log('Signatures grouped by page:', signaturesByPage.size, 'pages');
+
+      // Draw signatures on each page
+      for (const [pageNumber, sigs] of signaturesByPage.entries()) {
+        console.log(`Processing page ${pageNumber} with ${sigs.length} signatures`);
+        
+        const page = pages[pageNumber - 1]; // Pages are 0-indexed
+        if (!page) {
+          console.warn(`Page ${pageNumber} not found`);
+          continue;
+        }
+
+        const { height } = page.getSize();
+        console.log(`Page ${pageNumber} height:`, height);
+
+        for (const sig of sigs) {
+          try {
+            console.log(`Embedding signature for ${sig.userName} at (${sig.area.x}, ${sig.area.y})`);
+            
+            // Get signature image data
+            let imageData = sig.signatureImageData;
+            
+            // Ensure it's a valid data URL
+            if (!imageData.startsWith('data:image/png;base64,')) {
+              console.error('Invalid image format:', imageData.substring(0, 50));
+              continue;
+            }
+            
+            // Extract base64 data
+            const base64Data = imageData.split('base64,')[1];
+            console.log('Base64 data length:', base64Data.length);
+            
+            // Embed PNG
+            const pngImage = await pdfDoc.embedPng(base64Data);
+            console.log('PNG embedded successfully');
+
+            // Convert coordinates (PDF coordinates start from bottom-left)
+            const pdfY = height - sig.area.y - sig.area.height;
+
+            // Draw image on PDF
+            page.drawImage(pngImage, {
+              x: sig.area.x,
+              y: pdfY,
+              width: sig.area.width,
+              height: sig.area.height,
+            });
+            
+            console.log(`Signature drawn at PDF coords: (${sig.area.x}, ${pdfY})`);
+          } catch (error) {
+            console.error('Error embedding signature:', error);
+            console.error('Signature data:', {
+              userName: sig.userName,
+              pageNumber: sig.pageNumber,
+              area: sig.area,
+              imageDataPrefix: sig.signatureImageData.substring(0, 100)
+            });
+          }
+        }
+      }
+
+      console.log('All signatures processed, saving PDF...');
+      
+      // Save modified PDF
+      const pdfBytes = await pdfDoc.save();
+      console.log('PDF saved, size:', pdfBytes.length);
+      
+      // Convert to Blob
+      const uint8Array = new Uint8Array(pdfBytes);
+      const blob = new Blob([uint8Array], { type: 'application/pdf' });
+      
+      console.log('PDF Blob created, size:', blob.size);
+      return blob;
+      
+    } catch (error: any) {
+      console.error('Error generating signed PDF:', error);
+      console.error('Error details:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      });
+      return null;
+    }
+  }
+
+  // Check status
+  hasUserSignature(userId: string): boolean {
+    return this.userSignatures.has(userId);
+  }
+
+  getUserSignatureImage(userId: string): string | null {
+    return this.userSignatures.get(userId)?.imageData || null;
+  }
+
+  getVisualCount(userId: string): number {
+    return this.visualSignatures.filter(s => s.userId === userId).length;
+  }
+
+  getCryptoCount(userId: string): number {
+    return this.visualSignatures.filter(s => 
+      s.userId === userId && this.cryptoSignatureIds.has(s.signatureId)
+    ).length;
+  }
+
+  isUserComplete(userId: string): boolean {
+    return this.hasUserSignature(userId) && 
+           this.getVisualCount(userId) > 0 && 
+           this.getCryptoCount(userId) === 1;
+  }
+
+  // PDF events
   onPageSelected(pageNumber: number) {
     console.log('Page selected:', pageNumber);
   }
+
   onSignatureAdded(sig: SignatureArea) {
-    // Add the new signature to the array
-    this.signatures = [...this.signatures, sig];
-    // Important: create new array reference for change detection
-  }
+    if (!this.selectedUser) return;
 
-  handleListRemove(id: string) {
-    this.modalService.showConfirm(
-      'Remove Signature',
-      'Remove this signature?',
-      () => {
-        // Remove and create new array reference
-        this.signatures = this.signatures.filter(s => s.signatureId !== id);
-      }
-    );
-  }
+    if (!this.hasUserSignature(this.selectedUser.id)) {
+      this.modalService.showAlert(
+        'Create Signature First',
+        'Please create your signature before placing it.',
+        'warning'
+      );
+      return;
+    }
 
-  handleClearAll() {
-    this.modalService.showConfirm(
-      'Clear All',
-      'Remove all signatures?',
-      () => {
-        this.signatures = [];
-      }
-    );
+    const signatureImage = this.getUserSignatureImage(this.selectedUser.id);
+    if (!signatureImage) return;
+
+    const visualSig: VisualSignatureArea = {
+      ...sig,
+      signatureImageData: signatureImage
+    };
+
+    this.visualSignatures = [...this.visualSignatures, visualSig];
   }
 
   onSignatureRemoveRequested(signatureId: string) {
     this.modalService.showConfirm(
       'Remove Signature',
-      'Do you want to remove this signature?',
+      'Remove this signature?',
       () => {
-        this.signatures = this.signatures.filter(
-          s => s.signatureId !== signatureId
-        );
+        this.visualSignatures = this.visualSignatures.filter(s => s.signatureId !== signatureId);
+        this.cryptoSignatureIds.delete(signatureId);
       }
     );
   }
-  // handleClearAll() {
-  //   this.modalService.showConfirm(
-  //     'Clear All',
-  //     'Remove all signatures?',
-  //     () => this.signatures = []
-  //   );
-  // }
-
-
 
   onPdfError(error: string) {
     this.modalService.showAlert('Error', error, 'error');
   }
 
-  // Signature helpers
-  getUserSignatureCount(userId: string): number {
-    return this.signatures.filter(s => s.userId === userId).length;
+  // Promote to crypto
+  promoteToCrypto(signatureId: string) {
+    const sig = this.visualSignatures.find(s => s.signatureId === signatureId);
+    if (!sig) return;
+
+    // Check if user already has crypto signature on THIS PAGE
+    const userCryptoOnPage = this.visualSignatures.filter(s => 
+      s.userId === sig.userId && 
+      s.pageNumber === sig.pageNumber &&
+      this.cryptoSignatureIds.has(s.signatureId)
+    );
+
+    if (userCryptoOnPage.length >= 1) {
+      this.modalService.showAlert(
+        'Limit Reached',
+        `${sig.userName} already has a cryptographic signature on page ${sig.pageNumber}. Each signer can only have ONE cryptographic signature per page.`,
+        'warning'
+      );
+      return;
+    }
+
+    this.cryptoSignatureIds.add(signatureId);
+    this.modalService.showAlert('Success', 'Signature promoted to cryptographic!', 'info');
   }
 
-  removeSignature(signatureId: string) {
-    this.signatures = this.signatures.filter(
-      s => s.signatureId !== signatureId
-    );
+  demoteFromCrypto(signatureId: string) {
+    this.cryptoSignatureIds.delete(signatureId);
+  }
+
+  isCrypto(signatureId: string): boolean {
+    return this.cryptoSignatureIds.has(signatureId);
+  }
+
+  // Get signatures by type
+  getVisualOnly(): VisualSignatureArea[] {
+    return this.visualSignatures.filter(s => !this.cryptoSignatureIds.has(s.signatureId));
+  }
+
+  getCryptoSignatures(): VisualSignatureArea[] {
+    return this.visualSignatures.filter(s => this.cryptoSignatureIds.has(s.signatureId));
   }
 
   clearAllSignatures() {
     this.modalService.showConfirm(
-      'Clear All Signatures',
-      'Are you sure you want to clear all signature areas?',
+      'Clear All',
+      'Remove all signatures from PDF?',
       () => {
-        this.signatures = [];
+        this.visualSignatures = [];
+        this.cryptoSignatureIds.clear();
       }
     );
   }
 
-  getPagesWithSignatures(): number[] {
-    const pages = [...new Set(this.signatures.map(s => s.pageNumber))];
-    return pages.sort((a, b) => a - b);
-  }
-
-  getSignaturesByPage(): Map<number, SignatureArea[]> {
-    const pageMap = new Map<number, SignatureArea[]>();
-    this.signatures.forEach(sig => {
-      if (!pageMap.has(sig.pageNumber)) {
-        pageMap.set(sig.pageNumber, []);
-      }
-      pageMap.get(sig.pageNumber)!.push(sig);
-    });
-    return new Map([...pageMap.entries()].sort((a, b) => a[0] - b[0]));
-  }
-
-  toggleSignaturesDropdown() {
-    this.signaturesDropdownOpen = !this.signaturesDropdownOpen;
-  }
-
-  // handleListRemove(signatureId: string) {
-  //   this.removeSignature(signatureId);
-  // }
-  // API Submission
+  // Submit
   async submitToAPI() {
     // Validation
     if (!this.documentType.trim()) {
-      this.modalService.showAlert(
-        'Validation Error',
-        'Please enter Document Type!',
-        'warning'
-      );
+      this.modalService.showAlert('Validation Error', 'Enter Document Type!', 'warning');
       return;
     }
 
     if (!this.priority.trim()) {
-      this.modalService.showAlert(
-        'Validation Error',
-        'Please select Priority!',
-        'warning'
-      );
+      this.modalService.showAlert('Validation Error', 'Select Priority!', 'warning');
       return;
     }
 
     if (!this.uploadedFile) {
-      this.modalService.showAlert(
-        'Validation Error',
-        'Please upload a PDF file!',
-        'warning'
-      );
+      this.modalService.showAlert('Validation Error', 'Upload a PDF file!', 'warning');
       return;
     }
 
-    if (this.signatures.length === 0) {
-      this.modalService.showAlert(
-        'Validation Error',
-        'Please add at least one signature area!',
-        'warning'
-      );
-      return;
+    // Check all users complete
+    for (const user of this.users) {
+      if (!this.hasUserSignature(user.id)) {
+        this.modalService.showAlert('Validation Error', `${user.name} must create signature!`, 'warning');
+        return;
+      }
+      if (this.getVisualCount(user.id) === 0) {
+        this.modalService.showAlert('Validation Error', `${user.name} must place at least 1 signature!`, 'warning');
+        return;
+      }
+      
+      // Check crypto per page
+      const userCryptoSigs = this.getCryptoSignatures().filter(s => s.userId === user.id);
+      const pages = new Set(userCryptoSigs.map(s => s.pageNumber));
+      
+      if (pages.size === 0) {
+        this.modalService.showAlert('Validation Error', `${user.name} must have at least one cryptographic signature!`, 'warning');
+        return;
+      }
     }
 
     this.submitting = true;
 
     try {
-      // Group signatures by user
-      const userSignatureMap = new Map<string, SignatureArea[]>();
-      this.signatures.forEach(sig => {
-        if (!userSignatureMap.has(sig.userId)) {
-          userSignatureMap.set(sig.userId, []);
-        }
-        userSignatureMap.get(sig.userId)!.push(sig);
-      });
+      console.log('Starting PDF generation...');
+      console.log('Visual signatures count:', this.visualSignatures.length);
+      
+      // Generate signed PDF with visual signatures
+      const signedPdfBlob = await this.generateSignedPDF();
+      
+      if (!signedPdfBlob) {
+        this.submitting = false;
+        this.modalService.showAlert(
+          'PDF Generation Error',
+          'Failed to generate signed PDF. Please check console for details.',
+          'error'
+        );
+        return;
+      }
+    const downloadLink = document.createElement('a');
+    downloadLink.href = URL.createObjectURL(signedPdfBlob);
+    downloadLink.download = 'signed_document.pdf';  
+        document.body.appendChild(downloadLink);
+    downloadLink.click();
+    document.body.removeChild(downloadLink)
+      console.log('PDF generated successfully, size:', signedPdfBlob.size);
 
-      // Build signers array
-      // const signers = Array.from(userSignatureMap.entries()).map(
-      //   ([userId, sigs]) => {
-      //     const user = this.users.find(u => u.id === userId);
-      //     return {
-      //       aadhaar: user?.email || '',
-      //       name: sigs[0].userName,
-      //       signatures: sigs.map(sig => ({
-      //         coordinates: {
-      //           x: Math.round(sig.area.x),
-      //           y: Math.round(sig.area.y),
-      //           width: Math.round(sig.area.width),
-      //           height: Math.round(sig.area.height)
-      //         },
-      //         page: sig.pageNumber
-      //       }))
-      //     };
-      //   }
-      // );
-
-
-      const signers = Array.from(userSignatureMap.entries()).map(([userId, sigs]) => {
-        const user = this.users.find(u => u.id === userId);
-
-        const coordinates: Record<number, any> = {};
-        const pages = new Set<number>();
-
-        sigs.forEach(sig => {
-          coordinates[sig.pageNumber] = {
-            x: Math.round(sig.area.x),
-            y: Math.round(sig.area.y),
-            width: Math.round(sig.area.width),
-            height: Math.round(sig.area.height)
-          };
-          pages.add(sig.pageNumber);
-        });
-
+      // Prepare crypto signatures for API
+      const cryptoSigs = this.getCryptoSignatures();
+      
+      console.log('Crypto signatures count:', cryptoSigs.length);
+      
+      const signers = cryptoSigs.map(sig => {
+        const user = this.users.find(u => u.id === sig.userId);
         return {
           aadhaar: user?.email || '',
           name: user?.name || '',
-          coordinates: coordinates,
-          pages: Array.from(pages)
+          coordinates: {
+            [sig.pageNumber]: {
+              x: Math.round(sig.area.x),
+              y: Math.round(sig.area.y),
+              width: Math.round(sig.area.width),
+              height: Math.round(sig.area.height)
+            }
+          },
+          pages: [sig.pageNumber]
         };
       });
 
       const payload = {
-
         clientId: 'ARTHNEXT_UAT_Profile',
         clientWebhookUrl: 'https://your-webhook.com/callback',
         metadata: {
@@ -321,38 +505,32 @@ export class MultisignatureComponent {
 
       const formData = new FormData();
       formData.append('data', JSON.stringify(payload));
-      if (this.uploadedFile) {
-        formData.append('pdf', this.uploadedFile);
-      }
+      // Send the signed PDF with visual signatures embedded
+      formData.append('pdf', signedPdfBlob, 'signed_document.pdf');
 
       console.log('=== API PAYLOAD ===');
       console.log(JSON.stringify(payload, null, 2));
+      console.log(`Visual signatures: ${this.visualSignatures.length}`);
+      console.log(`Crypto signatures: ${cryptoSigs.length}`);
+      console.log('Sending PDF with visual signatures embedded');
 
-      // Open tab and submit
       const tab1 = window.open('', '_blank');
       if (!tab1) {
-        this.modalService.showAlert(
-          'Popup Blocked',
-          'Please allow popups for this site.',
-          'error'
-        );
+        this.modalService.showAlert('Popup Blocked', 'Please allow popups.', 'error');
+        this.submitting = false;
         return;
       }
 
       tab1.document.write('<p>Preparing eSign document...</p>');
-      // this.router.navigate(['/esignStatus'], {
-      //   queryParams: { esignId: "fgdghd" }
-      // });
+
       this.http.post(this.initiateAPI, formData).subscribe({
         next: (res: any) => {
           this.submitting = false;
           if (res?.esignUrl) {
             tab1.location.href = res.esignUrl;
-
-              // tab1.document.write('<p>Preparing eSign document...</p>');
-      this.router.navigate(['/esignStatus'], {
-        queryParams: { esignId: res?.esignId }
-      });
+            this.router.navigate(['/esignStatus'], {
+              queryParams: { esignId: res?.esignId }
+            });
           } else {
             tab1.document.body.innerHTML = '<p>Failed to get eSign URL.</p>';
           }
@@ -360,24 +538,12 @@ export class MultisignatureComponent {
         error: (err) => {
           this.submitting = false;
           tab1.document.body.innerHTML = '<p>Error occurred.</p>';
-          this.modalService.showAlert(
-            'Submission Error',
-            `Failed: ${err.message || 'Unknown error'}`,
-            'error'
-          );
+          this.modalService.showAlert('Submission Error', `Failed: ${err.message}`, 'error');
         }
       });
     } catch (error: any) {
-      this.modalService.showAlert(
-        'Error',
-        `Failed: ${error.message}`,
-        'error'
-      );
-    } finally {
       this.submitting = false;
+      this.modalService.showAlert('Error', `Failed: ${error.message}`, 'error');
     }
   }
-
-
-
 }

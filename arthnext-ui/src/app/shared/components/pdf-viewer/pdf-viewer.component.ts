@@ -6,7 +6,6 @@ import {
   input,
   output,
   signal,
-  computed,
   effect,
   untracked,
   AfterViewInit,
@@ -18,27 +17,8 @@ import { CommonModule, isPlatformBrowser } from '@angular/common';
 import type * as pdfjsLibTypes from 'pdfjs-dist';
 declare const pdfjsLib: typeof pdfjsLibTypes;
 
-export interface Rectangle {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
-export interface SignatureArea {
-  signatureId: string;
-  userId: string;
-  userName: string;
-  pageNumber: number;
-  area: Rectangle;
-  color: string;
-}
-
-export interface User {
-  id: string;
-  name: string;
-  color: string;
-}
+// Import from shared models instead of redefining
+import { Rectangle, SignatureArea, User } from '../../models/signature.models';
 
 @Component({
   selector: 'app-pdf-viewer',
@@ -49,29 +29,70 @@ export interface User {
       <!-- PDF Thumbnails -->
       <div class="pdf-thumbnails" #pdfContainer></div>
 
-      <!-- Main Canvas Container with Overlay -->
+      <!-- Main Canvas Container -->
       <div class="canvas-wrapper" [class.hidden]="!selectedPageNumber()">
-        <canvas
-          #signCanvas
-          class="sign-canvas"
-          (mousedown)="onMouseDown($event)"
-          (mousemove)="onMouseMove($event)"
-          (mouseup)="onMouseUp($event)"
-          (mouseleave)="onMouseLeave()"
-        ></canvas>
-        
-        <!-- Remove Buttons Overlay -->
-        <div class="buttons-overlay">
-          <button
-            *ngFor="let sig of getPageSignatures()"
-            class="remove-btn"
-            [style.left.px]="getRemoveButtonPosition(sig).x"
-            [style.top.px]="getRemoveButtonPosition(sig).y"
-            (click)="onRemoveClick(sig.signatureId)"
-            title="Remove signature"
+        <div class="canvas-stack" #canvasStack>
+          <!-- Base PDF Canvas -->
+          <canvas #signCanvas class="sign-canvas"></canvas>
+          
+          <!-- Drawing Preview Overlay -->
+          <div 
+            class="drawing-overlay"
+            [class.drawing]="isDrawing"
+            *ngIf="previewRect"
+            [style.left.px]="previewRect.x"
+            [style.top.px]="previewRect.y"
+            [style.width.px]="previewRect.width"
+            [style.height.px]="previewRect.height"
+            [style.border-color]="selectedUser()?.color || '#000'"
           >
-            ✕
-          </button>
+            <img 
+              *ngIf="userSignatureImage()" 
+              [src]="userSignatureImage()" 
+              class="preview-signature-img"
+            />
+            <span class="preview-label" [style.color]="selectedUser()?.color || '#000'">
+              {{ selectedUser()?.name || '' }}
+            </span>
+          </div>
+
+          <!-- Signature Boxes Overlay -->
+          <div class="signatures-overlay">
+            <div
+              *ngFor="let sig of getPageSignatures()"
+              class="signature-box"
+              [style.left.px]="sig.area.x"
+              [style.top.px]="sig.area.y"
+              [style.width.px]="sig.area.width"
+              [style.height.px]="sig.area.height"
+              [style.border-color]="sig.color"
+            >
+              <img 
+                *ngIf="getSignatureImage(sig.userId)" 
+                [src]="getSignatureImage(sig.userId)" 
+                class="signature-img"
+              />
+              <span class="signature-label" [style.color]="sig.color">
+                {{ sig.userName }}
+              </span>
+              <button
+                class="remove-btn"
+                (click)="onRemoveClick(sig.signatureId)"
+                title="Remove signature"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+
+          <!-- Invisible interaction layer -->
+          <div 
+            class="interaction-layer"
+            (mousedown)="onMouseDown($event)"
+            (mousemove)="onMouseMove($event)"
+            (mouseup)="onMouseUp()"
+            (mouseleave)="onMouseLeave()"
+          ></div>
         </div>
       </div>
 
@@ -92,7 +113,6 @@ export interface User {
       border-radius: 8px;
       max-height: 300px;
       overflow-y: auto;
-      scroll-behavior: smooth;
       margin-bottom: 20px;
     }
 
@@ -106,34 +126,136 @@ export interface User {
       display: none;
     }
 
+    .canvas-stack {
+      position: relative;
+      display: inline-block;
+    }
+
     .sign-canvas {
       display: block;
       border: 3px solid #2c3e50;
-      cursor: crosshair;
       box-shadow: 0 4px 12px rgba(0,0,0,0.15);
       border-radius: 4px;
-      max-width: 100%;
       background: white;
     }
 
-    .buttons-overlay {
+    .interaction-layer {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      cursor: crosshair;
+      z-index: 100;
+    }
+
+    .drawing-overlay {
+      position: absolute;
+      border: 3px dashed;
+      background: transparent;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      box-sizing: border-box;
+      z-index: 50;
+      overflow: hidden;
+    }
+
+    .drawing-overlay.drawing {
+      animation: pulse 0.5s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 0.8; }
+      50% { opacity: 1; }
+    }
+
+    .preview-signature-img {
+      width: 100%;
+      height: 100%;
+      object-fit: fill;
+      filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
+    }
+
+    .preview-label {
+      position: absolute;
+      bottom: 2px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 10px;
+      font-weight: 700;
+      background: rgba(255, 255, 255, 0.9);
+      padding: 1px 6px;
+      border-radius: 3px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+
+    .signatures-overlay {
       position: absolute;
       top: 0;
       left: 0;
       width: 100%;
       height: 100%;
       pointer-events: none;
+      z-index: 10;
+    }
+
+    .signature-box {
+      position: absolute;
+      border: 3px solid;
+      background: transparent;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      box-sizing: border-box;
+      pointer-events: auto;
+      transition: all 0.2s;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      overflow: hidden;
+    }
+
+    .signature-box:hover {
+      box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+      transform: scale(1.02);
+      z-index: 20;
+    }
+
+    .signature-img {
+      width: 100%;
+      height: 100%;
+      object-fit: fill;
+      display: block;
+    }
+
+    .signature-label {
+      position: absolute;
+      bottom: 2px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 9px;
+      font-weight: 700;
+      background: rgba(255, 255, 255, 0.9);
+      padding: 1px 5px;
+      border-radius: 3px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
     }
 
     .remove-btn {
       position: absolute;
-      width: 28px;
-      height: 28px;
+      top: -12px;
+      right: -12px;
+      width: 24px;
+      height: 24px;
       border-radius: 50%;
       background: #e74c3c;
       color: white;
       border: 2px solid white;
-      font-size: 16px;
+      font-size: 14px;
       font-weight: bold;
       cursor: pointer;
       display: flex;
@@ -142,20 +264,12 @@ export interface User {
       box-shadow: 0 2px 8px rgba(0,0,0,0.3);
       transition: all 0.2s;
       pointer-events: auto;
-      z-index: 10;
-      line-height: 1;
-      padding: 0;
-      transform: translate(-50%, -50%);
+      z-index: 30;
     }
 
     .remove-btn:hover {
       background: #c0392b;
-      transform: translate(-50%, -50%) scale(1.15) rotate(90deg);
-      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-    }
-
-    .remove-btn:active {
-      transform: translate(-50%, -50%) scale(1.05);
+      transform: scale(1.15) rotate(90deg);
     }
 
     .loading {
@@ -172,11 +286,14 @@ export interface User {
 export class PdfViewerComponent implements AfterViewInit {
   @ViewChild('pdfContainer') pdfContainer?: ElementRef<HTMLDivElement>;
   @ViewChild('signCanvas') signCanvas?: ElementRef<HTMLCanvasElement>;
+  @ViewChild('canvasStack') canvasStack?: ElementRef<HTMLDivElement>;
 
   // Input signals
   file = input<File | null>(null);
   selectedUser = input<User | null>(null);
   signatures = input<SignatureArea[]>([]);
+  userSignatureImage = input<string | null>(null);
+  userSignatureImages = input<Map<string, string>>(new Map());
   scale = input<number>(1.5);
   thumbnailScale = input<number>(0.3);
 
@@ -186,22 +303,22 @@ export class PdfViewerComponent implements AfterViewInit {
   signatureRemoveRequested = output<string>();
   errorOccurred = output<string>();
 
-  // Local state signals
+  // Local state
   loading = signal<boolean>(false);
   selectedPageNumber = signal<number | null>(null);
   
-  // Private state
+  // Drawing state
   private pdfDoc: any = null;
   private signCtx: CanvasRenderingContext2D | null = null;
   private currentRenderTask: any = null;
-  private isDrawing = false;
-  private justFinishedDrawing = false;
+  isDrawing = false;
   private startX = 0;
   private startY = 0;
-  private mouseMoveThrottle: any = null;
+  private currentX = 0;
+  private currentY = 0;
+  previewRect: { x: number; y: number; width: number; height: number } | null = null;
 
   constructor(@Inject(PLATFORM_ID) private platformId: Object) {
-    // Effect to load PDF when file changes
     effect(() => {
       const currentFile = this.file();
       if (currentFile) {
@@ -209,12 +326,12 @@ export class PdfViewerComponent implements AfterViewInit {
       }
     });
 
-    // Effect to re-render when signatures change
     effect(() => {
       const sigs = this.signatures();
       const pageNum = this.selectedPageNumber();
-      if (pageNum && sigs) {
-        untracked(() => this.renderSelectedPageWithAreas());
+      if (pageNum && sigs !== undefined) {
+        // Signatures changed, but don't re-render canvas
+        // Just update the overlay
       }
     });
   }
@@ -322,6 +439,16 @@ export class PdfViewerComponent implements AfterViewInit {
   private async selectPage(pageNumber: number) {
     if (!this.pdfDoc || !this.signCanvas || this.isDrawing) return;
 
+    // Cancel any ongoing render
+    if (this.currentRenderTask) {
+      try {
+        await this.currentRenderTask.cancel();
+      } catch (e) {
+        // Ignore cancellation errors
+      }
+      this.currentRenderTask = null;
+    }
+
     this.selectedPageNumber.set(pageNumber);
     this.pageSelected.emit(pageNumber);
 
@@ -349,63 +476,64 @@ export class PdfViewerComponent implements AfterViewInit {
       }
     }
 
-    await this.renderSelectedPageWithAreas();
+    await this.renderSelectedPage();
   }
 
-  private async renderSelectedPageWithAreas() {
+  private async renderSelectedPage() {
     const pageNum = this.selectedPageNumber();
     if (!pageNum || !this.pdfDoc || !this.signCtx || !this.signCanvas) return;
 
     try {
+      // Cancel any ongoing render
       if (this.currentRenderTask) {
-        await this.currentRenderTask.cancel();
+        try {
+          await this.currentRenderTask.cancel();
+        } catch (e) {
+          // Ignore
+        }
         this.currentRenderTask = null;
       }
 
       const page = await this.pdfDoc.getPage(pageNum);
       const viewport = page.getViewport({ scale: this.scale() });
       const canvas = this.signCanvas.nativeElement;
-      canvas.height = viewport.height;
+      
+      // Set canvas size
       canvas.width = viewport.width;
+      canvas.height = viewport.height;
 
-      this.currentRenderTask = page.render({ canvasContext: this.signCtx, viewport });
+      // Clear before rendering
+      this.signCtx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Render the page
+      this.currentRenderTask = page.render({ 
+        canvasContext: this.signCtx, 
+        viewport 
+      });
+      
       await this.currentRenderTask.promise;
       this.currentRenderTask = null;
 
-      const pageSignatures = this.signatures().filter(s => s.pageNumber === pageNum);
-      pageSignatures.forEach(sig => {
-        this.drawRectangle(sig.area, sig.color, sig.userName);
-      });
     } catch (error: any) {
       if (error.name !== 'RenderingCancelledException') {
-        console.error('Error rendering selected page:', error);
+        console.error('Error rendering page:', error);
       }
     }
   }
 
-  private drawRectangle(rect: Rectangle, color: string, label: string) {
-    if (!this.signCtx) return;
-
-    this.signCtx.strokeStyle = color;
-    this.signCtx.lineWidth = 3;
-    this.signCtx.setLineDash([5, 5]);
-    this.signCtx.strokeRect(rect.x, rect.y, rect.width, rect.height);
-    this.signCtx.fillStyle = color.replace(')', ', 0.1)').replace('rgb', 'rgba');
-    this.signCtx.fillRect(rect.x, rect.y, rect.width, rect.height);
-    this.signCtx.setLineDash([]);
-
-    this.signCtx.fillStyle = color;
-    this.signCtx.font = 'bold 14px Arial';
-    const textMetrics = this.signCtx.measureText(label);
-    const textWidth = textMetrics.width;
-    const textHeight = 16;
-
-    this.signCtx.fillRect(rect.x, rect.y - textHeight - 6, textWidth + 10, textHeight + 6);
-    this.signCtx.fillStyle = 'white';
-    this.signCtx.fillText(label, rect.x + 5, rect.y - 8);
+  private getCanvasCoordinates(e: MouseEvent): { x: number; y: number } {
+    if (!this.canvasStack) return { x: 0, y: 0 };
+    
+    const stackElement = this.canvasStack.nativeElement;
+    const rect = stackElement.getBoundingClientRect();
+    
+    return {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top
+    };
   }
 
-  onMouseDown(event: MouseEvent) {
+  onMouseDown(e: MouseEvent) {
     const pageNum = this.selectedPageNumber();
     if (!pageNum) {
       this.errorOccurred.emit('Please select a page first!');
@@ -417,120 +545,50 @@ export class PdfViewerComponent implements AfterViewInit {
       this.errorOccurred.emit('Please select a user first!');
       return;
     }
-    
-    if (!this.signCanvas) return;
 
-    const canvas = this.signCanvas.nativeElement;
-    const rect = canvas.getBoundingClientRect();
-
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-
-    this.startX = (event.clientX - rect.left) * scaleX;
-    this.startY = (event.clientY - rect.top) * scaleY;
+    const pos = this.getCanvasCoordinates(e);
+    this.startX = pos.x;
+    this.startY = pos.y;
+    this.currentX = pos.x;
+    this.currentY = pos.y;
     this.isDrawing = true;
+    
+    this.updatePreviewRect();
   }
 
-  async onMouseMove(event: MouseEvent) {
+  onMouseMove(e: MouseEvent) {
+    if (!this.isDrawing) return;
+
+    const pos = this.getCanvasCoordinates(e);
+    this.currentX = pos.x;
+    this.currentY = pos.y;
+    
+    this.updatePreviewRect();
+  }
+
+  onMouseUp() {
+    if (!this.isDrawing) return;
+
     const pageNum = this.selectedPageNumber();
     const user = this.selectedUser();
     
-    if (!this.isDrawing || !pageNum || !this.signCtx || !user || !this.signCanvas) return;
-
-    // Throttle mouse move events to reduce flickering
-    if (this.mouseMoveThrottle) {
+    if (!pageNum || !user) {
+      this.isDrawing = false;
+      this.previewRect = null;
       return;
     }
 
-    this.mouseMoveThrottle = setTimeout(() => {
-      this.mouseMoveThrottle = null;
-    }, 16); // ~60fps
-
-    const canvas = this.signCanvas.nativeElement;
-    const rect = canvas.getBoundingClientRect();
-
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-
-    const mouseX = (event.clientX - rect.left) * scaleX;
-    const mouseY = (event.clientY - rect.top) * scaleY;
-    const width = mouseX - this.startX;
-    const height = mouseY - this.startY;
-
-    try {
-      if (this.currentRenderTask) {
-        try {
-          await this.currentRenderTask.cancel();
-        } catch (e) {
-          // Ignore cancellation errors
-        }
-        this.currentRenderTask = null;
-      }
-
-      const page = await this.pdfDoc.getPage(pageNum);
-      const viewport = page.getViewport({ scale: this.scale() });
-      
-      this.signCtx.clearRect(0, 0, canvas.width, canvas.height);
-
-      const renderTask = page.render({ canvasContext: this.signCtx, viewport });
-      await renderTask.promise;
-
-      const pageSignatures = this.signatures().filter(s => s.pageNumber === pageNum);
-      pageSignatures.forEach(sig => {
-        this.drawRectangle(sig.area, sig.color, sig.userName);
-      });
-
-      const currentColor = user.color;
-      this.signCtx.strokeStyle = currentColor;
-      this.signCtx.lineWidth = 3;
-      this.signCtx.setLineDash([5, 5]);
-      this.signCtx.strokeRect(this.startX, this.startY, width, height);
-      this.signCtx.fillStyle = currentColor.replace(')', ', 0.1)').replace('rgb', 'rgba');
-      this.signCtx.fillRect(this.startX, this.startY, width, height);
-      this.signCtx.setLineDash([]);
-    } catch (error: any) {
-      if (error.name !== 'RenderingCancelledException') {
-        console.error('Error during rectangle drawing:', error);
-      }
-    }
-  }
-
-  onMouseUp(event: MouseEvent) {
-    const pageNum = this.selectedPageNumber();
-    const user = this.selectedUser();
-    
-    if (!this.isDrawing || !pageNum || !user || !this.signCanvas) return;
-
-    const canvas = this.signCanvas.nativeElement;
-    const rect = canvas.getBoundingClientRect();
-
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-
-    const endX = (event.clientX - rect.left) * scaleX;
-    const endY = (event.clientY - rect.top) * scaleY;
-
     const area: Rectangle = {
-      x: Math.min(this.startX, endX),
-      y: Math.min(this.startY, endY),
-      width: Math.abs(endX - this.startX),
-      height: Math.abs(endY - this.startY)
+      x: Math.min(this.startX, this.currentX),
+      y: Math.min(this.startY, this.currentY),
+      width: Math.abs(this.currentX - this.startX),
+      height: Math.abs(this.currentY - this.startY)
     };
 
     this.isDrawing = false;
-    this.justFinishedDrawing = true;
+    this.previewRect = null;
 
-    setTimeout(() => {
-      this.justFinishedDrawing = false;
-    }, 300);
-
-    if (area.width > 20 && area.height > 20) {
-      if (this.checkOverlap(area, pageNum)) {
-        this.errorOccurred.emit('Signature area overlaps with an existing signature!');
-        this.renderSelectedPageWithAreas();
-        return;
-      }
-
+    if (area.width > 30 && area.height > 30) {
       const userSignature: SignatureArea = {
         signatureId: `sig_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         userId: user.id,
@@ -541,16 +599,25 @@ export class PdfViewerComponent implements AfterViewInit {
       };
 
       this.signatureAdded.emit(userSignature);
-    } else {
-      this.renderSelectedPageWithAreas();
     }
   }
 
   onMouseLeave() {
     if (this.isDrawing) {
       this.isDrawing = false;
-      this.renderSelectedPageWithAreas();
+      this.previewRect = null;
     }
+  }
+
+  private updatePreviewRect() {
+    if (!this.isDrawing) return;
+
+    this.previewRect = {
+      x: Math.min(this.startX, this.currentX),
+      y: Math.min(this.startY, this.currentY),
+      width: Math.abs(this.currentX - this.startX),
+      height: Math.abs(this.currentY - this.startY)
+    };
   }
 
   onRemoveClick(signatureId: string) {
@@ -563,42 +630,8 @@ export class PdfViewerComponent implements AfterViewInit {
     return this.signatures().filter(s => s.pageNumber === pageNum);
   }
 
-  getRemoveButtonPosition(sig: SignatureArea): { x: number; y: number } {
-    if (!this.signCanvas) return { x: 0, y: 0 };
-    
-    const canvas = this.signCanvas.nativeElement;
-    const rect = canvas.getBoundingClientRect();
-    
-    // Scale from canvas coordinates to display coordinates
-    const scaleX = rect.width / canvas.width;
-    const scaleY = rect.height / canvas.height;
-    
-    // Position button at top-right corner of signature
-    const x = (sig.area.x + sig.area.width) * scaleX;
-    const y = sig.area.y * scaleY;
-    
-    return { x, y };
-  }
-
-  private checkOverlap(newArea: Rectangle, pageNumber: number): boolean {
-    const pageSignatures = this.signatures().filter(s => s.pageNumber === pageNumber);
-
-    for (const sig of pageSignatures) {
-      if (this.rectanglesOverlap(newArea, sig.area)) {
-        return true;
-      }
-    }
-
-    return false;
-  }
-
-  private rectanglesOverlap(rect1: Rectangle, rect2: Rectangle): boolean {
-    const noOverlap =
-      rect1.x + rect1.width < rect2.x ||
-      rect2.x + rect2.width < rect1.x ||
-      rect1.y + rect1.height < rect2.y ||
-      rect2.y + rect2.height < rect1.y;
-
-    return !noOverlap;
+  getSignatureImage(userId: string): string | null {
+    const images = this.userSignatureImages();
+    return images.get(userId) || null;
   }
 }

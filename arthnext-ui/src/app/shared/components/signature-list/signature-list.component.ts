@@ -14,6 +14,7 @@ export interface SignatureArea {
     height: number;
   };
   color: string;
+  type: 'visual' | 'cryptographic';
 }
 
 @Component({
@@ -34,15 +35,19 @@ export interface SignatureArea {
           >
             ▶
           </span>
-          Signature Areas ({{ signatureCount() }} total)
+          📝 Signature Areas ({{ signatureCount() }} total)
         </h3>
+        <div class="signature-type-counts">
+          <span class="type-badge visual">🎨 {{ visualCount() }} Visual</span>
+          <span class="type-badge crypto">🔒 {{ cryptoCount() }} Crypto</span>
+        </div>
         <div class="actions" (click)="$event.stopPropagation()">
           <button 
             (click)="handleClearAll()" 
             class="btn btn-clear"
             [disabled]="signatureCount() === 0"
           >
-            Clear All
+            🗑️ Clear All
           </button>
         </div>
       </div>
@@ -53,7 +58,7 @@ export interface SignatureArea {
       >
         <div *ngFor="let page of pages()" class="page-group">
           <h4 class="page-group-header">
-             Page {{ page }} 
+            📄 Page {{ page }} 
             <span class="page-count">
               ({{ getSignaturesByPage(page).length }} signature(s))
             </span>
@@ -63,12 +68,18 @@ export interface SignatureArea {
             <div 
               *ngFor="let sig of getSignaturesByPage(page)" 
               class="signature-card-compact" 
-              [style.border-left-color]="sig.color"
+              [class.cryptographic]="sig.type === 'cryptographic'"
+              [style.border-left-color]="sig.type === 'cryptographic' ? '#e67e22' : sig.color"
             >
               <div class="sig-content">
-                <div class="sig-user" [style.color]="sig.color">
-                  <span class="user-icon">👤</span>
-                  <strong>{{ sig.userName }}</strong>
+                <div class="sig-header">
+                  <div class="sig-user" [style.color]="sig.type === 'cryptographic' ? '#e67e22' : sig.color">
+                    <span class="user-icon">{{ sig.type === 'cryptographic' ? '🔒' : '🎨' }}</span>
+                    <strong>{{ sig.userName }}</strong>
+                  </div>
+                  <span class="sig-type-badge" [class.crypto]="sig.type === 'cryptographic'">
+                    {{ sig.type === 'cryptographic' ? 'CRYPTO' : 'VISUAL' }}
+                  </span>
                 </div>
                 <div class="sig-coords">
                   Position: ({{ sig.area.x | number:'1.0-0' }}, {{ sig.area.y | number:'1.0-0' }})
@@ -78,9 +89,10 @@ export interface SignatureArea {
               <button 
                 (click)="handleRemoveSignature(sig.signatureId)" 
                 class="btn-remove-compact"
-                title="Remove this signature"
+                [class.crypto]="sig.type === 'cryptographic'"
+                [title]="sig.type === 'cryptographic' ? 'Remove cryptographic signature' : 'Remove visual signature'"
               >
-                ✕
+                {{ sig.type === 'cryptographic' ? '🔒' : '✕' }}
               </button>
             </div>
           </div>
@@ -107,6 +119,8 @@ export interface SignatureArea {
       border-bottom: 2px solid #ecf0f1;
       user-select: none;
       transition: all 0.3s;
+      flex-wrap: wrap;
+      gap: 10px;
     }
 
     .section-header:hover {
@@ -122,6 +136,32 @@ export interface SignatureArea {
       align-items: center;
       gap: 10px;
       font-size: 18px;
+      flex: 1;
+      min-width: 200px;
+    }
+
+    .signature-type-counts {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .type-badge {
+      padding: 4px 12px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .type-badge.visual {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+
+    .type-badge.crypto {
+      background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+      color: white;
     }
 
     .actions {
@@ -182,21 +222,26 @@ export interface SignatureArea {
 
     .signatures-grid {
       display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 8px;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 10px;
     }
 
     .signature-card-compact {
       background: #f8f9fa;
-      border-left: 3px solid;
+      border-left: 4px solid;
       border-radius: 4px;
-      padding: 8px 10px;
+      padding: 10px 12px;
       display: flex;
       justify-content: space-between;
       align-items: center;
       transition: all 0.2s;
       position: relative;
-      min-height: 50px;
+      min-height: 60px;
+    }
+
+    .signature-card-compact.cryptographic {
+      background: linear-gradient(90deg, #fff5e6 0%, #f8f9fa 100%);
+      box-shadow: 0 2px 4px rgba(230, 126, 34, 0.1);
     }
 
     .signature-card-compact:hover {
@@ -205,9 +250,21 @@ export interface SignatureArea {
       transform: translateX(2px);
     }
 
+    .signature-card-compact.cryptographic:hover {
+      background: linear-gradient(90deg, #ffe8cc 0%, #e8f4f8 100%);
+    }
+
     .sig-content {
       flex: 1;
       min-width: 0;
+    }
+
+    .sig-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 4px;
     }
 
     .sig-user {
@@ -216,20 +273,35 @@ export interface SignatureArea {
       gap: 6px;
       font-size: 13px;
       font-weight: 600;
-      margin-bottom: 3px;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+      flex: 1;
     }
 
     .user-icon {
-      font-size: 14px;
+      font-size: 16px;
       flex-shrink: 0;
     }
 
     .sig-user strong {
       overflow: hidden;
       text-overflow: ellipsis;
+    }
+
+    .sig-type-badge {
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      background: #3498db;
+      color: white;
+      flex-shrink: 0;
+    }
+
+    .sig-type-badge.crypto {
+      background: #e67e22;
     }
 
     .sig-coords {
@@ -247,9 +319,9 @@ export interface SignatureArea {
       color: white;
       border: none;
       border-radius: 50%;
-      width: 22px;
-      height: 22px;
-      min-width: 22px;
+      width: 26px;
+      height: 26px;
+      min-width: 26px;
       cursor: pointer;
       font-size: 12px;
       line-height: 1;
@@ -257,13 +329,23 @@ export interface SignatureArea {
       display: flex;
       align-items: center;
       justify-content: center;
-      margin-left: 8px;
+      margin-left: 10px;
       flex-shrink: 0;
+    }
+
+    .btn-remove-compact.crypto {
+      background: #e67e22;
+      font-size: 11px;
     }
 
     .btn-remove-compact:hover {
       background: #c0392b;
       transform: rotate(90deg) scale(1.15);
+    }
+
+    .btn-remove-compact.crypto:hover {
+      background: #d35400;
+      transform: scale(1.15);
     }
 
     .btn-clear {
@@ -291,19 +373,27 @@ export interface SignatureArea {
   `]
 })
 export class SignatureListComponent {
-  // Input signals (read-only from parent)
+  // Input signals
   signatures = input<SignatureArea[]>([]);
   startOpen = input<boolean>(true);
 
-  // Output signals (emit events to parent)
+  // Output signals
   signatureRemoved = output<string>();
   clearAllRequested = output<void>();
 
-  // Local state signal
+  // Local state
   isOpen = signal<boolean>(true);
 
-  // Computed signals (auto-update when dependencies change)
+  // Computed signals
   signatureCount = computed(() => this.signatures().length);
+  
+  visualCount = computed(() => 
+    this.signatures().filter(s => s.type === 'visual').length
+  );
+  
+  cryptoCount = computed(() => 
+    this.signatures().filter(s => s.type === 'cryptographic').length
+  );
   
   pages = computed(() => {
     const pageSet = new Set(this.signatures().map(s => s.pageNumber));
@@ -319,7 +409,14 @@ export class SignatureListComponent {
   }
 
   getSignaturesByPage(page: number): SignatureArea[] {
-    return this.signatures().filter(s => s.pageNumber === page);
+    return this.signatures()
+      .filter(s => s.pageNumber === page)
+      .sort((a, b) => {
+        // Sort cryptographic signatures first
+        if (a.type === 'cryptographic' && b.type === 'visual') return -1;
+        if (a.type === 'visual' && b.type === 'cryptographic') return 1;
+        return 0;
+      });
   }
 
   handleRemoveSignature(signatureId: string) {
