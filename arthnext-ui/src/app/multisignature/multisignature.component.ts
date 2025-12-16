@@ -140,6 +140,23 @@ export class MultisignatureComponent {
 
   openSignatureCreator(user: User) {
     this.selectedUser = user;
+    
+    // If editing existing signature, clear the old one first
+    if (this.userSignatures.has(user.id)) {
+      console.log('Editing signature for:', user.name);
+      console.log('Removing old signature and all visual signatures for this user');
+      
+      // Remove all visual signatures for this user when editing
+      this.visualSignatures = this.visualSignatures.filter(s => s.userId !== user.id);
+      
+      // Remove from crypto set
+      this.visualSignatures.forEach(sig => {
+        if (sig.userId === user.id) {
+          this.cryptoSignatureIds.delete(sig.signatureId);
+        }
+      });
+    }
+    
     setTimeout(() => {
       this.signatureModal?.openModal();
     }, 100);
@@ -148,6 +165,11 @@ export class MultisignatureComponent {
   onSignatureSaved(signature: DrawnSignature) {
     if (!this.selectedUser) return;
 
+    console.log('New signature saved for:', this.selectedUser.name);
+    console.log('Signature type:', signature.type);
+    console.log('Image data length:', signature.imageData.length);
+
+    // Store the new signature (replaces old one if exists)
     this.userSignatures.set(this.selectedUser.id, signature);
     
     this.modalService.showAlert(
@@ -223,6 +245,9 @@ export class MultisignatureComponent {
             // Get signature image data
             let imageData = sig.signatureImageData;
             
+            console.log('Image data length:', imageData.length);
+            console.log('Image data starts with:', imageData.substring(0, 50));
+            
             // Ensure it's a valid data URL
             if (!imageData.startsWith('data:image/png;base64,')) {
               console.error('Invalid image format:', imageData.substring(0, 50));
@@ -232,13 +257,30 @@ export class MultisignatureComponent {
             // Extract base64 data
             const base64Data = imageData.split('base64,')[1];
             console.log('Base64 data length:', base64Data.length);
+            console.log('Base64 first 50 chars:', base64Data.substring(0, 50));
+            
+            // Convert base64 to Uint8Array for pdf-lib
+            const binaryString = atob(base64Data);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+              bytes[i] = binaryString.charCodeAt(i);
+            }
+            
+            console.log('Converted to bytes, length:', bytes.length);
             
             // Embed PNG
-            const pngImage = await pdfDoc.embedPng(base64Data);
-            console.log('PNG embedded successfully');
+            const pngImage = await pdfDoc.embedPng(bytes);
+            console.log('PNG embedded successfully, dimensions:', pngImage.width, 'x', pngImage.height);
 
             // Convert coordinates (PDF coordinates start from bottom-left)
             const pdfY = height - sig.area.y - sig.area.height;
+
+            console.log('Drawing at:', {
+              x: sig.area.x,
+              y: pdfY,
+              width: sig.area.width,
+              height: sig.area.height
+            });
 
             // Draw image on PDF
             page.drawImage(pngImage, {
@@ -248,9 +290,11 @@ export class MultisignatureComponent {
               height: sig.area.height,
             });
             
-            console.log(`Signature drawn at PDF coords: (${sig.area.x}, ${pdfY})`);
-          } catch (error) {
-            console.error('Error embedding signature:', error);
+            console.log(`✅ Signature drawn successfully for ${sig.userName}`);
+          } catch (error: any) {
+            console.error('❌ Error embedding signature:', error);
+            console.error('Error message:', error.message);
+            console.error('Error stack:', error.stack);
             console.error('Signature data:', {
               userName: sig.userName,
               pageNumber: sig.pageNumber,
@@ -358,14 +402,17 @@ export class MultisignatureComponent {
     const sig = this.visualSignatures.find(s => s.signatureId === signatureId);
     if (!sig) return;
 
-    // Check if user already has crypto signature on THIS PAGE
-    const userCryptoOnPage = this.visualSignatures.filter(s => 
+    // STRICT CHECK: Count how many crypto signatures this user already has on THIS PAGE
+    const userCryptoOnThisPage = this.visualSignatures.filter(s => 
       s.userId === sig.userId && 
       s.pageNumber === sig.pageNumber &&
       this.cryptoSignatureIds.has(s.signatureId)
     );
 
-    if (userCryptoOnPage.length >= 1) {
+    console.log('Crypto check for', sig.userName, 'on page', sig.pageNumber);
+    console.log('Existing crypto on this page:', userCryptoOnThisPage.length);
+
+    if (userCryptoOnThisPage.length >= 1) {
       this.modalService.showAlert(
         'Limit Reached',
         `${sig.userName} already has a cryptographic signature on page ${sig.pageNumber}. Each signer can only have ONE cryptographic signature per page.`,
@@ -375,6 +422,9 @@ export class MultisignatureComponent {
     }
 
     this.cryptoSignatureIds.add(signatureId);
+    console.log('Promoted to crypto:', signatureId);
+    console.log('Total crypto IDs now:', this.cryptoSignatureIds.size);
+    
     this.modalService.showAlert('Success', 'Signature promoted to cryptographic!', 'info');
   }
 
@@ -408,17 +458,7 @@ export class MultisignatureComponent {
 
   // Submit
   async submitToAPI() {
-    // Validation
-    if (!this.documentType.trim()) {
-      this.modalService.showAlert('Validation Error', 'Enter Document Type!', 'warning');
-      return;
-    }
-
-    if (!this.priority.trim()) {
-      this.modalService.showAlert('Validation Error', 'Select Priority!', 'warning');
-      return;
-    }
-
+    // Validation - Document type and priority are OPTIONAL now
     if (!this.uploadedFile) {
       this.modalService.showAlert('Validation Error', 'Upload a PDF file!', 'warning');
       return;
@@ -435,13 +475,23 @@ export class MultisignatureComponent {
         return;
       }
       
-      // Check crypto per page
-      const userCryptoSigs = this.getCryptoSignatures().filter(s => s.userId === user.id);
-      const pages = new Set(userCryptoSigs.map(s => s.pageNumber));
+      // Strict validation: Check crypto per page
+      const userVisualSigs = this.visualSignatures.filter(s => s.userId === user.id);
+      const pages = new Set(userVisualSigs.map(s => s.pageNumber));
       
-      if (pages.size === 0) {
-        this.modalService.showAlert('Validation Error', `${user.name} must have at least one cryptographic signature!`, 'warning');
-        return;
+      // For each page where user has signatures, check if at least one is crypto
+      for (const pageNum of pages) {
+        const sigsOnPage = userVisualSigs.filter(s => s.pageNumber === pageNum);
+        const cryptoOnPage = sigsOnPage.filter(s => this.cryptoSignatureIds.has(s.signatureId));
+        
+        if (cryptoOnPage.length === 0) {
+          this.modalService.showAlert(
+            'Validation Error', 
+            `${user.name} must have at least 1 cryptographic signature on page ${pageNum}!`,
+            'warning'
+          );
+          return;
+        }
       }
     }
 
@@ -465,10 +515,12 @@ export class MultisignatureComponent {
       }
     const downloadLink = document.createElement('a');
     downloadLink.href = URL.createObjectURL(signedPdfBlob);
-    downloadLink.download = 'signed_document.pdf';  
-        document.body.appendChild(downloadLink);
+    downloadLink.download = 'signed_document.pdf';  // Set the name for the downloaded PDF file
+
+    // Append the link to the DOM, trigger the click, and remove it
+    document.body.appendChild(downloadLink);
     downloadLink.click();
-    document.body.removeChild(downloadLink)
+    document.body.removeChild(downloadLink);
       console.log('PDF generated successfully, size:', signedPdfBlob.size);
 
       // Prepare crypto signatures for API

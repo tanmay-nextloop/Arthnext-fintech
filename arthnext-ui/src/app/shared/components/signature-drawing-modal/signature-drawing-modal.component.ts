@@ -507,6 +507,7 @@ export class SignatureDrawingModalComponent implements AfterViewInit {
     
     this.ctx.fillStyle = '#ffffff';
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    
     this.ctx.strokeStyle = this.currentColor();
     this.hasContent = false;
   }
@@ -567,6 +568,8 @@ export class SignatureDrawingModalComponent implements AfterViewInit {
     const trimmedCanvas = this.trimCanvas(tempCanvas);
     const imageData = trimmedCanvas.toDataURL('image/png');
 
+    console.log('Typed signature saved, size:', trimmedCanvas.width, 'x', trimmedCanvas.height);
+
     this.signatureSaved.emit({
       imageData: imageData,
       color: this.currentColor(),
@@ -587,20 +590,35 @@ export class SignatureDrawingModalComponent implements AfterViewInit {
     let minY = sourceCanvas.height;
     let maxX = 0;
     let maxY = 0;
+    let hasContent = false;
 
-    // Find the bounding box of non-transparent pixels
+    // Find the bounding box of non-white/non-transparent pixels
     for (let y = 0; y < sourceCanvas.height; y++) {
       for (let x = 0; x < sourceCanvas.width; x++) {
         const index = (y * sourceCanvas.width + x) * 4;
+        const r = data[index];
+        const g = data[index + 1];
+        const b = data[index + 2];
         const alpha = data[index + 3];
         
-        if (alpha > 0) {
+        // Check if pixel is not white and not transparent
+        const isNotWhite = !(r === 255 && g === 255 && b === 255);
+        const isNotTransparent = alpha > 10;
+        
+        if (isNotWhite && isNotTransparent) {
+          hasContent = true;
           if (x < minX) minX = x;
           if (x > maxX) maxX = x;
           if (y < minY) minY = y;
           if (y > maxY) maxY = y;
         }
       }
+    }
+
+    // If no content found, return original
+    if (!hasContent) {
+      console.warn('No content found in canvas');
+      return sourceCanvas;
     }
 
     // Add small padding (5px)
@@ -613,7 +631,13 @@ export class SignatureDrawingModalComponent implements AfterViewInit {
     const width = maxX - minX + 1;
     const height = maxY - minY + 1;
 
-    // Create trimmed canvas
+    console.log('Trimming canvas:', {
+      original: `${sourceCanvas.width}x${sourceCanvas.height}`,
+      trimmed: `${width}x${height}`,
+      bounds: { minX, minY, maxX, maxY }
+    });
+
+    // Create trimmed canvas with WHITE background
     const trimmedCanvas = document.createElement('canvas');
     trimmedCanvas.width = width;
     trimmedCanvas.height = height;

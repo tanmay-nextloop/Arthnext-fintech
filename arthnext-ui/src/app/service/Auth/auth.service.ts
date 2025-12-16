@@ -133,13 +133,14 @@ export class AuthService {
     // Successful login
     this.currentUserSubject.next(userRecord.user);
     localStorage.setItem('currentUser', JSON.stringify(userRecord.user));
-
+        localStorage.setItem('isLoggedIn', 'true');
     return { success: true, user: userRecord.user };
   }
 
   logout(): void {
     this.currentUserSubject.next(null);
     localStorage.removeItem('currentUser');
+        localStorage.setItem('isLoggedIn', 'false');
   }
 
   getCurrentUser(): AuthUser | null {

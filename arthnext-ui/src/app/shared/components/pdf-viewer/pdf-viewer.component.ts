@@ -120,6 +120,8 @@ import { Rectangle, SignatureArea, User } from '../../models/signature.models';
       position: relative;
       display: inline-block;
       margin-bottom: 20px;
+      display:flex;
+      justify-content:center;
     }
 
     .canvas-wrapper.hidden {
