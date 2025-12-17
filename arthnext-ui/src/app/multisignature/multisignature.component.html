@@ -64,11 +64,11 @@
             <span [class.done]="hasUserSignature(user.id)">
               {{ hasUserSignature(user.id) ? '✓' : '○' }} Signature
             </span>
-            <span [class.done]="getVisualCount(user.id) > 0">
-              {{ getVisualCount(user.id) > 0 ? '✓' : '○' }} Visual ({{ getVisualCount(user.id) }})
+            <span [class.done]="getUserSignedPages(user.id).length > 0">
+              {{ getUserSignedPages(user.id).length > 0 ? '✓' : '○' }} Pages: {{ getUserSignedPages(user.id).join(', ') || 'None' }}
             </span>
-            <span [class.done]="getCryptoCount(user.id) === 1">
-              {{ getCryptoCount(user.id) === 1 ? '✓' : '○' }} Crypto ({{ getCryptoCount(user.id) }}/1)
+            <span [class.done]="hasUserCryptoOnAllPages(user.id)" [class.crypto-status]="hasUserCryptoOnAllPages(user.id)">
+              {{ hasUserCryptoOnAllPages(user.id) ? '✓' : '○' }} Crypto: {{ getUserCryptoPages(user.id).join(', ') || 'None' }}
             </span>
           </div>
         </div>
@@ -93,11 +93,15 @@
     <div class="info-box">
       <div class="info-step">
         <span class="step-num">1</span>
-        <span>Draw boxes on PDF to place visual signatures</span>
+        <span>Draw boxes on PDF to place signatures (you can add multiple signatures on any page)</span>
       </div>
       <div class="info-step">
         <span class="step-num">2</span>
-        <span>Promote ONE visual signature to cryptographic</span>
+        <span>Convert AT LEAST ONE signature to cryptographic on EACH page where you sign</span>
+      </div>
+      <div class="info-step">
+        <span class="step-num">3</span>
+        <span>Example: If you sign on pages 1, 3, 5 → You need 1 crypto on page 1, 1 crypto on page 3, and 1 crypto on page 5</span>
       </div>
     </div>
 
@@ -108,6 +112,14 @@
       <img *ngIf="getUserSignatureImage(selectedUser.id)" 
            [src]="getUserSignatureImage(selectedUser.id)" 
            class="sig-preview" />
+      <div class="crypto-status-info">
+        <span class="crypto-status-badge" [class.has-crypto]="hasUserCryptoOnAllPages(selectedUser.id)">
+          {{ hasUserCryptoOnAllPages(selectedUser.id) ? '✓ Complete' : '⚠ Incomplete' }}
+        </span>
+        <span class="page-info" *ngIf="getUserMissingCryptoPages(selectedUser.id).length > 0">
+          Missing crypto on: {{ getUserMissingCryptoPages(selectedUser.id).join(', ') }}
+        </span>
+      </div>
     </div>
 
     <app-pdf-viewer
@@ -128,17 +140,32 @@
   <div *ngIf="visualSignatures.length > 0" class="step-section">
     <h3>📋 Signature Management</h3>
 
+    <!-- Crypto requirement info -->
+    <div class="crypto-info-box" [class.warning]="!allUsersHaveCryptoOnAllPages()" [class.success]="allUsersHaveCryptoOnAllPages()">
+      <div class="info-icon">{{ allUsersHaveCryptoOnAllPages() ? '✓' : 'ℹ️' }}</div>
+      <div class="info-content">
+        <div class="info-title">{{ allUsersHaveCryptoOnAllPages() ? 'All Pages Covered' : 'Cryptographic Signatures Needed' }}</div>
+        <div class="info-message">{{ getCryptoStatusMessage() }}</div>
+        <div class="info-hint">💡 Each signer needs at least 1 cryptographic signature on every page they sign</div>
+      </div>
+    </div>
+
     <!-- Visual Signatures -->
     <div *ngIf="getVisualOnly().length > 0" class="sig-section">
       <h4>🎨 Visual Signatures</h4>
+      <p class="section-hint">⬇️ Convert signatures to cryptographic by clicking "🔒 Make Crypto" below</p>
       <div class="sig-grid">
         <div *ngFor="let sig of getVisualOnly()" class="sig-card" [style.border-left-color]="sig.color">
           <div class="sig-info">
             <strong [style.color]="sig.color">{{ sig.userName }}</strong>
-            <span class="sig-detail">Page {{ sig.pageNumber }}</span>
+            <span class="sig-detail">
+              Page {{ sig.pageNumber }}
+              <span *ngIf="hasUserCryptoOnPage(sig.userId, sig.pageNumber)" class="page-has-crypto">✓ Has crypto</span>
+              <!-- <span *ngIf="!hasUserCryptoOnPage(sig.userId, sig.pageNumber)" class="page-needs-crypto">⚠ Needs crypto</span> -->
+            </span>
           </div>
           <div class="sig-actions">
-            <button (click)="promoteToCrypto(sig.signatureId)" class="btn-promote">
+            <button (click)="promoteToCrypto(sig.signatureId)" class="btn-promote" title="Convert this signature to cryptographic">
               🔒 Make Crypto
             </button>
             <button (click)="onSignatureRemoveRequested(sig.signatureId)" class="btn-icon btn-remove">
@@ -152,6 +179,7 @@
     <!-- Crypto Signatures -->
     <div *ngIf="getCryptoSignatures().length > 0" class="sig-section crypto-section">
       <h4>🔒 Cryptographic Signatures</h4>
+      <p class="section-hint">✓ These signatures will be used for digital signing</p>
       <div class="sig-grid">
         <div *ngFor="let sig of getCryptoSignatures()" class="sig-card crypto">
           <div class="sig-info">
@@ -160,7 +188,7 @@
           </div>
           <div class="sig-actions">
             <span class="badge-crypto">✓ CRYPTO</span>
-            <button (click)="demoteFromCrypto(sig.signatureId)" class="btn-icon">
+            <button (click)="demoteFromCrypto(sig.signatureId)" class="btn-icon" title="Convert back to visual">
               ⬇️
             </button>
             <button (click)="onSignatureRemoveRequested(sig.signatureId)" class="btn-icon btn-remove">
@@ -196,14 +224,15 @@
     </div>
 
     <button (click)="submitToAPI()" 
-            [disabled]="submitting || getCryptoSignatures().length !== users.length"
-            class="btn btn-submit">
+            [disabled]="submitting || !allUsersHaveCryptoOnAllPages()"
+            class="btn btn-submit"
+            [title]="!allUsersHaveCryptoOnAllPages() ? 'Each signer needs crypto on every page they signed' : 'Submit for eSign'">
       {{ submitting ? '⏳ Submitting...' : '🚀 Submit for eSign' }}
     </button>
 
     <div class="checklist">
-      <div class="check-item" [class.done]="getCryptoSignatures().length === users.length">
-        {{ getCryptoSignatures().length === users.length ? '✓' : '○' }} All signers ready
+      <div class="check-item" [class.done]="allUsersHaveCryptoOnAllPages()">
+        {{ allUsersHaveCryptoOnAllPages() ? '✓' : '○' }} Each signer has crypto on every page
       </div>
     </div>
   </div>

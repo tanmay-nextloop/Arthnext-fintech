@@ -213,6 +213,12 @@ h2 {
       background: #d5f4e6;
       color: #27ae60;
     }
+
+    &.crypto-status {
+      background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+      color: white;
+      font-weight: 700;
+    }
   }
 }
 
@@ -299,6 +305,7 @@ h2 {
   background: #f8f9fa;
   border-radius: 8px;
   margin-bottom: 20px;
+  flex-wrap: wrap;
 }
 
 .user-badge {
@@ -306,6 +313,32 @@ h2 {
   border-radius: 20px;
   color: white;
   font-weight: 700;
+}
+
+.crypto-status-info {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.crypto-status-badge {
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 700;
+  background: #f39c12;
+  color: white;
+  display: inline-block;
+
+  &.has-crypto {
+    background: #27ae60;
+  }
+}
+
+.page-info {
+  font-size: 12px;
+  color: #e74c3c;
+  font-weight: 600;
 }
 
 .sig-preview {
@@ -317,6 +350,54 @@ h2 {
   background: white;
 }
 
+// Crypto info box
+.crypto-info-box {
+  display: flex;
+  gap: 15px;
+  padding: 20px;
+  border-radius: 12px;
+  margin-bottom: 25px;
+  border-left: 5px solid;
+  
+  &.warning {
+    background: linear-gradient(90deg, #fff3cd 0%, #fff9e6 100%);
+    border-left-color: #f39c12;
+  }
+
+  &.success {
+    background: linear-gradient(90deg, #d4edda 0%, #e8f5e9 100%);
+    border-left-color: #27ae60;
+  }
+
+  .info-icon {
+    font-size: 32px;
+    line-height: 1;
+  }
+
+  .info-content {
+    flex: 1;
+  }
+
+  .info-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: #2c3e50;
+    margin-bottom: 5px;
+  }
+
+  .info-message {
+    font-size: 14px;
+    color: #555;
+    margin-bottom: 8px;
+  }
+
+  .info-hint {
+    font-size: 12px;
+    color: #7f8c8d;
+    font-style: italic;
+  }
+}
+
 .sig-section {
   margin-bottom: 25px;
 
@@ -326,6 +407,16 @@ h2 {
 
   &.crypto-section h4 {
     color: #e67e22;
+  }
+
+  .section-hint {
+    font-size: 13px;
+    color: #7f8c8d;
+    margin-bottom: 15px;
+    padding: 8px 12px;
+    background: #f8f9fa;
+    border-radius: 6px;
+    border-left: 3px solid #3498db;
   }
 }
 
@@ -368,6 +459,27 @@ h2 {
   .sig-detail {
     font-size: 12px;
     color: #7f8c8d;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .page-has-crypto {
+    font-size: 11px;
+    padding: 2px 6px;
+    background: #d5f4e6;
+    color: #27ae60;
+    border-radius: 8px;
+    font-weight: 600;
+  }
+
+  .page-needs-crypto {
+    font-size: 11px;
+    padding: 2px 6px;
+    background: #fff3cd;
+    color: #f39c12;
+    border-radius: 8px;
+    font-weight: 600;
   }
 }
 
@@ -390,6 +502,7 @@ h2 {
 
   &:hover {
     transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
   }
 }
 
@@ -478,5 +591,18 @@ h2 {
 
   .summary {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  .crypto-info-box {
+    flex-direction: column;
+    
+    .info-icon {
+      font-size: 24px;
+    }
+  }
+
+  .current-user {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }

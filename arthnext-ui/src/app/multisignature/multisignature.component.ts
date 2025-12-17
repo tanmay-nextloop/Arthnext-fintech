@@ -64,10 +64,41 @@ export class MultisignatureComponent {
     private router: Router
   ) {}
 
-  // File handling
+  // File handling - RESET EVERYTHING when file changes
   onFileChange(event: Event) {
     const input = event.target as HTMLInputElement;
-    this.uploadedFile = input.files?.[0] || null;
+    const newFile = input.files?.[0] || null;
+    
+    // If there was a previous file and user is changing it, confirm reset
+    if (this.uploadedFile && newFile) {
+      this.modalService.showConfirm(
+        'Change PDF File',
+        'Changing the PDF will remove all signers and signatures. Continue?',
+        () => {
+          this.resetEverything();
+          this.uploadedFile = newFile;
+        },
+        () => {
+          // User cancelled, reset the file input to previous file
+          input.value = '';
+        }
+      );
+    } else {
+      this.uploadedFile = newFile;
+    }
+  }
+
+  // Reset all data
+  private resetEverything() {
+    this.users = [];
+    this.selectedUser = null;
+    this.userSignatures.clear();
+    this.visualSignatures = [];
+    this.cryptoSignatureIds.clear();
+    this.colorIndex = 0;
+    this.newUserName = '';
+    this.newUserAadhar = '';
+    this.showAddUserForm = false;
   }
 
   // User management
@@ -309,10 +340,57 @@ export class MultisignatureComponent {
     ).length;
   }
 
+  // Get pages where user has signed
+  getUserSignedPages(userId: string): number[] {
+    const pages = new Set(
+      this.visualSignatures
+        .filter(s => s.userId === userId)
+        .map(s => s.pageNumber)
+    );
+    return Array.from(pages).sort((a, b) => a - b);
+  }
+
+  // Get pages where user has crypto signatures
+  getUserCryptoPages(userId: string): number[] {
+    const pages = new Set(
+      this.visualSignatures
+        .filter(s => s.userId === userId && this.cryptoSignatureIds.has(s.signatureId))
+        .map(s => s.pageNumber)
+    );
+    return Array.from(pages).sort((a, b) => a - b);
+  }
+
+  // Check if user has crypto on specific page
+  hasUserCryptoOnPage(userId: string, pageNumber: number): boolean {
+    return this.visualSignatures.some(s => 
+      s.userId === userId && 
+      s.pageNumber === pageNumber && 
+      this.cryptoSignatureIds.has(s.signatureId)
+    );
+  }
+
+  // Check if user has crypto on ALL pages they signed
+  hasUserCryptoOnAllPages(userId: string): boolean {
+    const signedPages = this.getUserSignedPages(userId);
+    const cryptoPages = this.getUserCryptoPages(userId);
+    
+    // Every signed page must have at least one crypto signature
+    return signedPages.every(page => cryptoPages.includes(page));
+  }
+
+  // Get pages missing crypto for a user
+  getUserMissingCryptoPages(userId: string): number[] {
+    const signedPages = this.getUserSignedPages(userId);
+    const cryptoPages = this.getUserCryptoPages(userId);
+    
+    return signedPages.filter(page => !cryptoPages.includes(page));
+  }
+
+  // Check if user is complete (has crypto on all pages they signed)
   isUserComplete(userId: string): boolean {
     return this.hasUserSignature(userId) && 
-           this.getVisualCount(userId) > 0 && 
-           this.getCryptoCount(userId) === 1;
+           this.visualSignatures.filter(s => s.userId === userId).length > 0 &&
+           this.hasUserCryptoOnAllPages(userId);
   }
 
   // PDF events
@@ -358,35 +436,30 @@ export class MultisignatureComponent {
     this.modalService.showAlert('Error', error, 'error');
   }
 
-  // Promote to crypto
+  // Promote to crypto - NO RESTRICTION on single signature per page
   promoteToCrypto(signatureId: string) {
     const sig = this.visualSignatures.find(s => s.signatureId === signatureId);
     if (!sig) return;
-
-    // STRICT CHECK: Count how many crypto signatures this user already has on THIS PAGE
-    const userCryptoOnThisPage = this.visualSignatures.filter(s => 
-      s.userId === sig.userId && 
-      s.pageNumber === sig.pageNumber &&
-      this.cryptoSignatureIds.has(s.signatureId)
-    );
-
-    console.log('Crypto check for', sig.userName, 'on page', sig.pageNumber);
-    console.log('Existing crypto on this page:', userCryptoOnThisPage.length);
-
-    if (userCryptoOnThisPage.length >= 1) {
-      this.modalService.showAlert(
-        'Limit Reached',
-        `${sig.userName} already has a cryptographic signature on page ${sig.pageNumber}. Each signer can only have ONE cryptographic signature per page.`,
-        'warning'
-      );
-      return;
-    }
 
     this.cryptoSignatureIds.add(signatureId);
     console.log('Promoted to crypto:', signatureId);
     console.log('Total crypto IDs now:', this.cryptoSignatureIds.size);
     
-    this.modalService.showAlert('Success', 'Signature promoted to cryptographic!', 'info');
+    // Check if user now has crypto on this page
+    const missingPages = this.getUserMissingCryptoPages(sig.userId);
+    if (missingPages.length === 0) {
+      this.modalService.showAlert(
+        '✓ All Pages Covered', 
+        `${sig.userName} now has cryptographic signatures on all pages they signed!`,
+        'info'
+      );
+    } else {
+      this.modalService.showAlert(
+        'Success', 
+        `Signature on page ${sig.pageNumber} promoted to cryptographic! ${sig.userName} still needs crypto on: ${missingPages.join(', ')}`,
+        'info'
+      );
+    }
   }
 
   demoteFromCrypto(signatureId: string) {
@@ -417,7 +490,33 @@ export class MultisignatureComponent {
     );
   }
 
-  // Submit
+  // Helper to check if all users have crypto on all their pages
+  allUsersHaveCryptoOnAllPages(): boolean {
+    return this.users.every(user => this.hasUserCryptoOnAllPages(user.id));
+  }
+
+  // Get crypto status message for UI
+  getCryptoStatusMessage(): string {
+    const usersWithMissingPages: Array<{user: User, pages: number[]}> = [];
+    
+    this.users.forEach(user => {
+      const missingPages = this.getUserMissingCryptoPages(user.id);
+      if (missingPages.length > 0) {
+        usersWithMissingPages.push({ user, pages: missingPages });
+      }
+    });
+    
+    if (usersWithMissingPages.length === 0) {
+      return '✓ All signers have cryptographic signatures on every page';
+    } else if (usersWithMissingPages.length === 1) {
+      const { user, pages } = usersWithMissingPages[0];
+      return `⚠ ${user.name} needs crypto on page(s): ${pages.join(', ')}`;
+    } else {
+      return `⚠ ${usersWithMissingPages.length} signers need cryptographic signatures on some pages`;
+    }
+  }
+
+  // Submit with correct validation
   async submitToAPI() {
     // Validation - Document type and priority are now OPTIONAL
     if (!this.uploadedFile) {
@@ -425,34 +524,28 @@ export class MultisignatureComponent {
       return;
     }
 
-    // Check all users complete
+    // Check all users have created signatures
     for (const user of this.users) {
       if (!this.hasUserSignature(user.id)) {
         this.modalService.showAlert('Validation Error', `${user.name} must create signature!`, 'warning');
         return;
       }
-      if (this.getVisualCount(user.id) === 0) {
+      if (this.visualSignatures.filter(s => s.userId === user.id).length === 0) {
         this.modalService.showAlert('Validation Error', `${user.name} must place at least 1 signature!`, 'warning');
         return;
       }
-      
-      // Strict validation: Check crypto per page
-      const userVisualSigs = this.visualSignatures.filter(s => s.userId === user.id);
-      const pages = new Set(userVisualSigs.map(s => s.pageNumber));
-      
-      // For each page where user has signatures, check if at least one is crypto
-      for (const pageNum of pages) {
-        const sigsOnPage = userVisualSigs.filter(s => s.pageNumber === pageNum);
-        const cryptoOnPage = sigsOnPage.filter(s => this.cryptoSignatureIds.has(s.signatureId));
-        
-        if (cryptoOnPage.length === 0) {
-          this.modalService.showAlert(
-            'Validation Error', 
-            `${user.name} must have at least 1 cryptographic signature on page ${pageNum}!`,
-            'warning'
-          );
-          return;
-        }
+    }
+
+    // CORRECT VALIDATION: Each user must have crypto on EVERY page they signed
+    for (const user of this.users) {
+      const missingPages = this.getUserMissingCryptoPages(user.id);
+      if (missingPages.length > 0) {
+        this.modalService.showAlert(
+          'Cryptographic Signatures Required',
+          `${user.name} needs at least 1 cryptographic signature on page(s): ${missingPages.join(', ')}`,
+          'warning'
+        );
+        return;
       }
     }
 
@@ -477,27 +570,53 @@ export class MultisignatureComponent {
 
       console.log('PDF generated successfully, size:', signedPdfBlob.size);
 
-      // Prepare crypto signatures for API
+      // Prepare crypto signatures for API - GROUP BY USER
       const cryptoSigs = this.getCryptoSignatures();
       
       console.log('Crypto signatures count:', cryptoSigs.length);
       
-      const signers = cryptoSigs.map(sig => {
+      // Group crypto signatures by user
+      const signerMap = new Map<string, {
+        aadhaar: string;
+        name: string;
+        coordinates: { [page: number]: { x: number; y: number; width: number; height: number } };
+        pages: number[];
+      }>();
+
+      cryptoSigs.forEach(sig => {
         const user = this.users.find(u => u.id === sig.userId);
-        return {
-          aadhaar: user?.email || '',
-          name: user?.name || '',
-          coordinates: {
-            [sig.pageNumber]: {
-              x: Math.round(sig.area.x),
-              y: Math.round(sig.area.y),
-              width: Math.round(sig.area.width),
-              height: Math.round(sig.area.height)
-            }
-          },
-          pages: [sig.pageNumber]
+        if (!user) return;
+
+        if (!signerMap.has(sig.userId)) {
+          signerMap.set(sig.userId, {
+            aadhaar: user.email || '',
+            name: user.name || '',
+            coordinates: {},
+            pages: []
+          });
+        }
+
+        const signerData = signerMap.get(sig.userId)!;
+        
+        // Add coordinates for this page
+        signerData.coordinates[sig.pageNumber] = {
+          x: Math.round(sig.area.x),
+          y: Math.round(sig.area.y),
+          width: Math.round(sig.area.width),
+          height: Math.round(sig.area.height)
         };
+        
+        // Add page to pages array if not already there
+        if (!signerData.pages.includes(sig.pageNumber)) {
+          signerData.pages.push(sig.pageNumber);
+        }
       });
+
+      // Convert map to array and sort pages
+      const signers = Array.from(signerMap.values()).map(signer => ({
+        ...signer,
+        pages: signer.pages.sort((a, b) => a - b)
+      }));
 
       const payload = {
         clientId: 'ARTHNEXT_UAT_Profile',
