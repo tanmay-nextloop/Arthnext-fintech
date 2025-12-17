@@ -301,17 +301,15 @@ export interface DrawnSignature {
     }
 
     .preview-text {
-      font-size: 36px;
-      line-height: 1.2;
+      font-size: 32px;
     }
 
     .modal-footer {
-      padding: 16px 24px;
+      padding: 20px 24px;
       background: #f8f9fa;
       display: flex;
       justify-content: flex-end;
       gap: 12px;
-      border-top: 1px solid #e0e0e0;
     }
 
     .btn {
@@ -321,16 +319,7 @@ export interface DrawnSignature {
       font-size: 15px;
       font-weight: 600;
       cursor: pointer;
-    }
-
-    .btn:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-
-    .btn-clear {
-      background: #e74c3c;
-      color: white;
+      transition: all 0.2s;
     }
 
     .btn-cancel {
@@ -342,6 +331,22 @@ export interface DrawnSignature {
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       color: white;
     }
+
+    .btn:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn-clear {
+      background: #e74c3c;
+      color: white;
+      padding: 10px 20px;
+    }
   `]
 })
 export class SignatureDrawingModalComponent implements AfterViewInit {
@@ -351,10 +356,10 @@ export class SignatureDrawingModalComponent implements AfterViewInit {
   signatureSaved = output<DrawnSignature>();
   closed = output<void>();
 
-  // Signals
-  isOpen = signal(false);
+  // State
+  isOpen = signal<boolean>(false);
   activeTab = signal<'draw' | 'type'>('draw');
-  currentColor = signal('#000000');
+  currentColor = signal<string>('#000000');
   selectedFontStyle = signal({ name: 'Cedarville Cursive', value: "'Cedarville Cursive', cursive" });
 
   // Data
@@ -387,9 +392,8 @@ export class SignatureDrawingModalComponent implements AfterViewInit {
 
     if (!this.ctx) return;
 
-    // Setup canvas
-    this.ctx.fillStyle = '#ffffff';
-    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    // Setup canvas with TRANSPARENT background
+    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     this.ctx.strokeStyle = this.currentColor();
     this.ctx.lineWidth = 3;
     this.ctx.lineCap = 'round';
@@ -505,8 +509,8 @@ export class SignatureDrawingModalComponent implements AfterViewInit {
   onClearCanvas() {
     if (!this.ctx || !this.canvas) return;
     
-    this.ctx.fillStyle = '#ffffff';
-    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    // Clear with TRANSPARENT background
+    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     
     this.ctx.strokeStyle = this.currentColor();
     this.hasContent = false;
@@ -533,7 +537,7 @@ export class SignatureDrawingModalComponent implements AfterViewInit {
   private saveDrawnSignature() {
     if (!this.canvas) return;
 
-    // Trim the signature to remove white space
+    // Trim the signature to remove transparent space
     const trimmedCanvas = this.trimCanvas(this.canvas);
     const imageData = trimmedCanvas.toDataURL('image/png');
     
@@ -554,7 +558,7 @@ export class SignatureDrawingModalComponent implements AfterViewInit {
     const tempCtx = tempCanvas.getContext('2d');
     if (!tempCtx) return;
 
-    // Transparent background instead of white
+    // Transparent background
     tempCtx.clearRect(0, 0, 600, 200);
 
     // Draw text
@@ -592,20 +596,14 @@ export class SignatureDrawingModalComponent implements AfterViewInit {
     let maxY = 0;
     let hasContent = false;
 
-    // Find the bounding box of non-white/non-transparent pixels
+    // Find the bounding box of non-transparent pixels
     for (let y = 0; y < sourceCanvas.height; y++) {
       for (let x = 0; x < sourceCanvas.width; x++) {
         const index = (y * sourceCanvas.width + x) * 4;
-        const r = data[index];
-        const g = data[index + 1];
-        const b = data[index + 2];
         const alpha = data[index + 3];
         
-        // Check if pixel is not white and not transparent
-        const isNotWhite = !(r === 255 && g === 255 && b === 255);
-        const isNotTransparent = alpha > 10;
-        
-        if (isNotWhite && isNotTransparent) {
+        // Check if pixel is not transparent
+        if (alpha > 10) {
           hasContent = true;
           if (x < minX) minX = x;
           if (x > maxX) maxX = x;
@@ -637,7 +635,7 @@ export class SignatureDrawingModalComponent implements AfterViewInit {
       bounds: { minX, minY, maxX, maxY }
     });
 
-    // Create trimmed canvas with WHITE background
+    // Create trimmed canvas with TRANSPARENT background
     const trimmedCanvas = document.createElement('canvas');
     trimmedCanvas.width = width;
     trimmedCanvas.height = height;
@@ -645,6 +643,7 @@ export class SignatureDrawingModalComponent implements AfterViewInit {
     const trimmedCtx = trimmedCanvas.getContext('2d');
     if (!trimmedCtx) return sourceCanvas;
 
+    // Keep transparent background by NOT filling with white
     // Copy trimmed content
     trimmedCtx.drawImage(
       sourceCanvas,

@@ -242,104 +242,65 @@ export class MultisignatureComponent {
           try {
             console.log(`Embedding signature for ${sig.userName} at (${sig.area.x}, ${sig.area.y})`);
             
-            // Get signature image data
-            let imageData = sig.signatureImageData;
-            
-            console.log('Image data length:', imageData.length);
-            console.log('Image data starts with:', imageData.substring(0, 50));
-            
-            // Ensure it's a valid data URL
-            if (!imageData.startsWith('data:image/png;base64,')) {
-              console.error('Invalid image format:', imageData.substring(0, 50));
-              continue;
-            }
-            
-            // Extract base64 data
-            const base64Data = imageData.split('base64,')[1];
-            console.log('Base64 data length:', base64Data.length);
-            console.log('Base64 first 50 chars:', base64Data.substring(0, 50));
-            
-            // Convert base64 to Uint8Array for pdf-lib
-            const binaryString = atob(base64Data);
-            const bytes = new Uint8Array(binaryString.length);
-            for (let i = 0; i < binaryString.length; i++) {
-              bytes[i] = binaryString.charCodeAt(i);
-            }
-            
-            console.log('Converted to bytes, length:', bytes.length);
-            
-            // Embed PNG
-            const pngImage = await pdfDoc.embedPng(bytes);
-            console.log('PNG embedded successfully, dimensions:', pngImage.width, 'x', pngImage.height);
+            // Convert base64 to PNG image and embed
+            const imageData = sig.signatureImageData;
+            const pngImage = await pdfDoc.embedPng(imageData);
+            console.log('PNG image embedded successfully');
 
-            // Convert coordinates (PDF coordinates start from bottom-left)
+            // Calculate position (PDF coordinates start from bottom-left)
             const pdfY = height - sig.area.y - sig.area.height;
 
-            console.log('Drawing at:', {
-              x: sig.area.x,
-              y: pdfY,
-              width: sig.area.width,
-              height: sig.area.height
-            });
+            console.log(`Drawing at PDF coordinates: x=${sig.area.x}, y=${pdfY}, w=${sig.area.width}, h=${sig.area.height}`);
 
-            // Draw image on PDF
+            // Draw the signature image
             page.drawImage(pngImage, {
               x: sig.area.x,
               y: pdfY,
               width: sig.area.width,
               height: sig.area.height,
+              opacity: 1.0
             });
-            
-            console.log(`✅ Signature drawn successfully for ${sig.userName}`);
+
+            console.log(`Successfully drew signature for ${sig.userName}`);
           } catch (error: any) {
-            console.error('❌ Error embedding signature:', error);
-            console.error('Error message:', error.message);
-            console.error('Error stack:', error.stack);
-            console.error('Signature data:', {
-              userName: sig.userName,
-              pageNumber: sig.pageNumber,
-              area: sig.area,
-              imageDataPrefix: sig.signatureImageData.substring(0, 100)
-            });
+            console.error(`Error embedding signature for ${sig.userName}:`, error);
+            throw error;
           }
         }
       }
 
-      console.log('All signatures processed, saving PDF...');
-      
-      // Save modified PDF
+      console.log('All signatures embedded successfully');
+
+      // Save the modified PDF
       const pdfBytes = await pdfDoc.save();
-      console.log('PDF saved, size:', pdfBytes.length);
+      console.log('PDF saved, final size:', pdfBytes.length);
       
       // Convert to Blob
       const uint8Array = new Uint8Array(pdfBytes);
       const blob = new Blob([uint8Array], { type: 'application/pdf' });
       
-      console.log('PDF Blob created, size:', blob.size);
       return blob;
-      
     } catch (error: any) {
       console.error('Error generating signed PDF:', error);
-      console.error('Error details:', {
-        message: error.message,
-        stack: error.stack,
-        name: error.name
-      });
+      console.error('Error stack:', error.stack);
       return null;
     }
   }
 
-  // Check status
+  // Helper methods for UI
   hasUserSignature(userId: string): boolean {
     return this.userSignatures.has(userId);
   }
 
   getUserSignatureImage(userId: string): string | null {
-    return this.userSignatures.get(userId)?.imageData || null;
+    const sig = this.userSignatures.get(userId);
+    return sig ? sig.imageData : null;
   }
 
   getVisualCount(userId: string): number {
-    return this.visualSignatures.filter(s => s.userId === userId).length;
+    return this.visualSignatures.filter(s => 
+      s.userId === userId && !this.cryptoSignatureIds.has(s.signatureId)
+    ).length;
   }
 
   getCryptoCount(userId: string): number {
@@ -458,7 +419,7 @@ export class MultisignatureComponent {
 
   // Submit
   async submitToAPI() {
-    // Validation - Document type and priority are OPTIONAL now
+    // Validation - Document type and priority are now OPTIONAL
     if (!this.uploadedFile) {
       this.modalService.showAlert('Validation Error', 'Upload a PDF file!', 'warning');
       return;
@@ -513,14 +474,7 @@ export class MultisignatureComponent {
         );
         return;
       }
-    const downloadLink = document.createElement('a');
-    downloadLink.href = URL.createObjectURL(signedPdfBlob);
-    downloadLink.download = 'signed_document.pdf';  // Set the name for the downloaded PDF file
 
-    // Append the link to the DOM, trigger the click, and remove it
-    document.body.appendChild(downloadLink);
-    downloadLink.click();
-    document.body.removeChild(downloadLink);
       console.log('PDF generated successfully, size:', signedPdfBlob.size);
 
       // Prepare crypto signatures for API
@@ -549,8 +503,8 @@ export class MultisignatureComponent {
         clientId: 'ARTHNEXT_UAT_Profile',
         clientWebhookUrl: 'https://your-webhook.com/callback',
         metadata: {
-          documentType: this.documentType,
-          priority: this.priority
+          documentType: this.documentType || 'General Document',
+          priority: this.priority || 'medium'
         },
         signers: signers
       };
