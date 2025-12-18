@@ -266,36 +266,68 @@ export class MultisignatureComponent {
           continue;
         }
 
-        const { height } = page.getSize();
-        console.log(`Page ${pageNumber} height:`, height);
+        const { width: pageWidth, height: pageHeight } = page.getSize();
+        console.log(`Page ${pageNumber} size:`, pageWidth, 'x', pageHeight);
+
+        // IMPORTANT: Canvas scale is 1.5, but PDF is scale 1.0
+        // We need to convert canvas coordinates back to PDF coordinates
+        const CANVAS_SCALE = 1.5;
 
         for (const sig of sigs) {
           try {
-            console.log(`Embedding signature for ${sig.userName} at (${sig.area.x}, ${sig.area.y})`);
+            console.log(`Embedding signature for ${sig.userName} at canvas coords (${sig.area.x}, ${sig.area.y})`);
             
             // Convert base64 to PNG image and embed
             const imageData = sig.signatureImageData;
             const pngImage = await pdfDoc.embedPng(imageData);
             console.log('PNG image embedded successfully');
+            
+            // Get actual image dimensions to maintain aspect ratio
+            const imgDims = pngImage.scale(1);
+            const imageAspectRatio = imgDims.width / imgDims.height;
 
-            // Calculate position (PDF coordinates start from bottom-left)
-            const pdfY = height - sig.area.y - sig.area.height;
+            // Convert canvas coordinates to PDF coordinates
+            const pdfX = sig.area.x / CANVAS_SCALE;
+            let pdfWidth = sig.area.width / CANVAS_SCALE;
+            let pdfHeight = sig.area.height / CANVAS_SCALE;
+            
+            // Maintain aspect ratio - fit image within the box (like object-fit: contain)
+            const boxAspectRatio = pdfWidth / pdfHeight;
+            
+            if (imageAspectRatio > boxAspectRatio) {
+              // Image is wider - fit to width
+              pdfHeight = pdfWidth / imageAspectRatio;
+            } else {
+              // Image is taller - fit to height
+              pdfWidth = pdfHeight * imageAspectRatio;
+            }
+            
+            // Calculate Y position (PDF coordinates start from bottom-left)
+            const canvasY = sig.area.y / CANVAS_SCALE;
+            const pdfY = pageHeight - canvasY - pdfHeight;
 
-            console.log(`Drawing at PDF coordinates: x=${sig.area.x}, y=${pdfY}, w=${sig.area.width}, h=${sig.area.height}`);
+            console.log(`Converted to PDF coordinates: x=${pdfX}, y=${pdfY}, w=${pdfWidth}, h=${pdfHeight} (aspect ratio preserved)`);
+
+            // Validate coordinates are within page bounds
+            if (pdfX < 0 || pdfY < 0 || pdfX + pdfWidth > pageWidth || pdfY + pdfHeight > pageHeight) {
+              console.warn(`Signature for ${sig.userName} is partially outside page bounds. Adjusting...`);
+              // Don't skip, but log warning
+            }
 
             // Draw the signature image
             page.drawImage(pngImage, {
-              x: sig.area.x,
-              y: pdfY,
-              width: sig.area.width,
-              height: sig.area.height,
+              x: Math.max(0, pdfX),
+              y: Math.max(0, pdfY),
+              width: Math.min(pdfWidth, pageWidth - pdfX),
+              height: Math.min(pdfHeight, pageHeight - pdfY),
               opacity: 1.0
             });
 
             console.log(`Successfully drew signature for ${sig.userName}`);
           } catch (error: any) {
             console.error(`Error embedding signature for ${sig.userName}:`, error);
-            throw error;
+            console.error('Signature data:', sig);
+            // Continue with other signatures even if one fails
           }
         }
       }
@@ -569,6 +601,10 @@ export class MultisignatureComponent {
       }
 
       console.log('PDF generated successfully, size:', signedPdfBlob.size);
+      // ✅ Download PDF locally before sending
+      this.downloadBlob(signedPdfBlob, 'signed_document.pdf');
+
+      console.log('PDF generated successfully, size:', signedPdfBlob.size);
 
       // Prepare crypto signatures for API - GROUP BY USER
       const cryptoSigs = this.getCryptoSignatures();
@@ -670,5 +706,14 @@ export class MultisignatureComponent {
       this.submitting = false;
       this.modalService.showAlert('Error', `Failed: ${error.message}`, 'error');
     }
+  }
+
+    private downloadBlob(blob: Blob, filename: string) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 }
