@@ -602,9 +602,9 @@ export class MultisignatureComponent {
 
       console.log('PDF generated successfully, size:', signedPdfBlob.size);
       // ✅ Download PDF locally before sending
-      this.downloadBlob(signedPdfBlob, 'signed_document.pdf');
+      // this.downloadBlob(signedPdfBlob, 'signed_document.pdf');
 
-      console.log('PDF generated successfully, size:', signedPdfBlob.size);
+      // console.log('PDF generated successfully, size:', signedPdfBlob.size);
 
       // Prepare crypto signatures for API - GROUP BY USER
       const cryptoSigs = this.getCryptoSignatures();
@@ -634,12 +634,16 @@ export class MultisignatureComponent {
 
         const signerData = signerMap.get(sig.userId)!;
         
-        // Add coordinates for this page
+        // Convert canvas coordinates (scale 1.5) to PDF coordinates (scale 1.0)
+        const CANVAS_SCALE = 1.5;
+        
+        // Use the actual visual signature coordinates for digital signature placement
+        // This will make the digital signature widget overlap exactly with the visual signature
         signerData.coordinates[sig.pageNumber] = {
-          x: Math.round(sig.area.x),
-          y: Math.round(sig.area.y),
-          width: Math.round(sig.area.width),
-          height: Math.round(sig.area.height)
+          x: Math.round(sig.area.x / CANVAS_SCALE),
+          y: Math.round(sig.area.y / CANVAS_SCALE),
+          width: Math.round(sig.area.width / CANVAS_SCALE),
+          height: Math.round(sig.area.height / CANVAS_SCALE)
         };
         
         // Add page to pages array if not already there

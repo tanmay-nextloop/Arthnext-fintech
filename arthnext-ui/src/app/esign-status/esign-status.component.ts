@@ -168,7 +168,7 @@ export class EsignStatusComponent implements OnInit {
   }
 
   goBack() {
-    this.router.navigate(['/multisign']);
+    this.router.navigate(['/multisignature']);
   }
 
   refreshStatus() {
