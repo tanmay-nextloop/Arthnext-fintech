@@ -108,6 +108,20 @@ export class MultisignatureComponent {
       return;
     }
 
+        // Validate Aadhaar number - must be exactly 12 digits
+    if (this.newUserAadhar.trim()) {
+      const aadhaarNumber = this.newUserAadhar.trim();
+      
+      // Check if it's exactly 12 digits
+      if (!/^\d{12}$/.test(aadhaarNumber)) {
+        this.modalService.showAlert(
+          'Invalid Aadhaar Number', 
+          'Aadhaar number must be exactly 12 digits!', 
+          'warning'
+        );
+        return;
+      }
+    }
     const user: User = {
       id: `user_${Date.now()}`,
       name: this.newUserName.trim(),

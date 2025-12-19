@@ -38,7 +38,15 @@
 
     <div *ngIf="showAddUserForm" class="add-form">
       <input [(ngModel)]="newUserName" placeholder="Full name" class="form-control" />
-      <input [(ngModel)]="newUserAadhar" placeholder="Aadhar Number" class="form-control" />
+      <input 
+        [(ngModel)]="newUserAadhar" 
+        placeholder="Aadhaar Number (12 digits)" 
+        class="form-control"
+        type="text"
+        maxlength="12"
+        pattern="[0-9]{12}"
+        title="Aadhaar number must be exactly 12 digits"
+      />
       <div class="form-actions">
         <button (click)="addUser()" class="btn btn-primary">✓ Add</button>
         <button (click)="showAddUserForm = false; newUserName = ''; newUserAadhar = ''" class="btn btn-secondary">
