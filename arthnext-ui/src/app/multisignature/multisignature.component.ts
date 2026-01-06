@@ -236,8 +236,47 @@ export class MultisignatureComponent {
     this.signaturesDropdownOpen = !this.signaturesDropdownOpen;
   }
 
+  /**
+   * NEW: Comprehensive validation method for submit button
+   */
+  canSubmit(): boolean {
+    // Check basic requirements
+    if (this.submitting) return false;
+    if (!this.documentType?.trim()) return false;
+    if (!this.priority?.trim()) return false;
+    if (!this.uploadedFile) return false;
+    if (this.signatures.length === 0) return false;
+    if (this.users.length === 0) return false;
+
+    // Check that each user has at least one signature
+    const userIdsWithSignatures = new Set(this.signatures.map(s => s.userId));
+    const allUsersHaveSignatures = this.users.every(u => 
+      userIdsWithSignatures.has(u.id)
+    );
+
+    return allUsersHaveSignatures;
+  }
+
+  /**
+   * NEW: Validate coordinates are within reasonable bounds
+   */
+  private validateCoordinates(signatures: SignatureArea[]): boolean {
+    return signatures.every(sig => {
+      const { x, y, width, height } = sig.area;
+      // Ensure all coordinates are positive and reasonable
+      return (
+        x >= 0 && 
+        y >= 0 && 
+        width > 0 && 
+        height > 0 &&
+        x + width <= 10000 && // Max reasonable canvas width
+        y + height <= 10000   // Max reasonable canvas height
+      );
+    });
+  }
+
   async submitToAPI() {
-    // Validation
+    // Enhanced validation
     if (!this.documentType.trim()) {
       this.modalService.showAlert('Validation Error', 'Please enter Document Type!', 'warning');
       return;
@@ -255,6 +294,26 @@ export class MultisignatureComponent {
 
     if (this.signatures.length === 0) {
       this.modalService.showAlert('Validation Error', 'Please add at least one signature area!', 'warning');
+      return;
+    }
+
+    // NEW: Check each user has at least one signature
+    const userIdsWithSignatures = new Set(this.signatures.map(s => s.userId));
+    const usersWithoutSignatures = this.users.filter(u => !userIdsWithSignatures.has(u.id));
+    
+    if (usersWithoutSignatures.length > 0) {
+      const userNames = usersWithoutSignatures.map(u => u.name).join(', ');
+      this.modalService.showAlert(
+        'Validation Error', 
+        `The following users do not have signatures: ${userNames}. Please add signatures for all users.`,
+        'warning'
+      );
+      return;
+    }
+
+    // NEW: Validate coordinates
+    if (!this.validateCoordinates(this.signatures)) {
+      this.modalService.showAlert('Validation Error', 'Invalid signature coordinates detected!', 'error');
       return;
     }
 
@@ -279,6 +338,7 @@ export class MultisignatureComponent {
         
         if (allPagesSig) {
           // Format for "all pages" signature
+          // Using page '1' as reference coordinates, API will apply to all pages
           return {
             aadhaar: user?.email || '',
             name: user?.name || '',
@@ -294,12 +354,13 @@ export class MultisignatureComponent {
           };
         } else {
           // Format for specific pages
-          const coordinates: Record<number, any> = {};
+          const coordinates: Record<string, any> = {};
           const pages: number[] = [];
 
           sigs.forEach(sig => {
             if (typeof sig.pageNumber === 'number') {
-              coordinates[sig.pageNumber] = {
+              // Convert page number to string key for coordinates object
+              coordinates[sig.pageNumber.toString()] = {
                 x: Math.round(sig.area.x),
                 y: Math.round(sig.area.y),
                 width: Math.round(sig.area.width),
@@ -334,12 +395,15 @@ export class MultisignatureComponent {
         formData.append('pdf', this.uploadedFile);
       }
 
-      console.log('=== API PAYLOAD ===');
+      console.log('=== FINAL API PAYLOAD ===');
       console.log(JSON.stringify(payload, null, 2));
+      console.log('=== Number of Signers:', signers.length);
+      console.log('=== Total Signatures:', this.signatures.length);
 
       const tab1 = window.open('', '_blank');
       if (!tab1) {
         this.modalService.showAlert('Popup Blocked', 'Please allow popups for this site.', 'error');
+        this.submitting = false;
         return;
       }
 
@@ -355,6 +419,7 @@ export class MultisignatureComponent {
             });
           } else {
             tab1.document.body.innerHTML = '<p>Failed to get eSign URL.</p>';
+            this.modalService.showAlert('Submission Error', 'Failed to get eSign URL from API.', 'error');
           }
         },
         error: (err) => {
@@ -368,9 +433,8 @@ export class MultisignatureComponent {
         }
       });
     } catch (error: any) {
-      this.modalService.showAlert('Error', `Failed: ${error.message}`, 'error');
-    } finally {
       this.submitting = false;
+      this.modalService.showAlert('Error', `Failed: ${error.message}`, 'error');
     }
   }
 }

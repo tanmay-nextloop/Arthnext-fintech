@@ -3,7 +3,7 @@
 
   <!-- Step 0: Document Metadata -->
   <div class="step-section metadata-section">
-    <h3> Document Information</h3>
+    <h3>📋 Document Information</h3>
     <div class="metadata-form">
       <div class="form-group">
         <label for="docType">Document Type *</label>
@@ -29,7 +29,7 @@
 
   <!-- Step 1: Upload PDF -->
   <div class="step-section">
-    <h3> Upload PDF Document</h3>
+    <h3>📄 Upload PDF Document</h3>
     <input
       type="file"
       accept="application/pdf"
@@ -43,14 +43,14 @@
 
   <!-- Step 2: Add Users -->
   <div *ngIf="uploadedFile" class="step-section">
-    <h3> Manage Signers</h3>
+    <h3>👥 Manage Signers</h3>
     
     <button 
       *ngIf="!showAddUserForm" 
       (click)="showAddUserForm = true" 
       class="btn btn-add-user"
     >
-       Add New Signer
+      ➕ Add New Signer
     </button>
 
     <div *ngIf="showAddUserForm" class="add-user-form">
@@ -109,9 +109,9 @@
     </div>
   </div>
 
-  <!-- Step 3 & 4: PDF Viewer Component (REPLACES HUGE CANVAS CODE!) -->
+  <!-- Step 3 & 4: PDF Viewer Component -->
   <div *ngIf="selectedUser" class="step-section">
-    <h3> Draw Signature Areas</h3>
+    <h3>✍️ Draw Signature Areas</h3>
     <div class="current-user-info">
       <span class="user-badge" [style.background-color]="selectedUser.color">
         {{ selectedUser.name }}
@@ -123,17 +123,8 @@
     </div>
   </div>
 
-  <!--  PDF VIEWER COMPONENT  -->
-  <!-- <app-pdf-viewer
-    [file]="uploadedFile"
-    [selectedUser]="selectedUser"
-    [signatures]="signatures"
-    (pageSelected)="onPageSelected($event)"
-    (signatureAdded)="onSignatureAdded($event)"
-    (signatureRemoveRequested)="onSignatureRemoveRequested($event)"
-    (errorOccurred)="onPdfError($event)"
-  ></app-pdf-viewer> -->
-    <app-pdf-viewer
+  <!-- PDF VIEWER COMPONENT -->
+  <app-pdf-viewer
     [file]="uploadedFile"
     [selectedUser]="selectedUser"
     [signatures]="signatures"
@@ -144,91 +135,40 @@
   ></app-pdf-viewer>
 
   <!-- Signatures Summary -->
-  <!-- <div *ngIf="signatures.length > 0" class="signatures-section">
-    <div 
-      class="section-header" 
-      (click)="toggleSignaturesDropdown()" 
-      style="cursor: pointer;"
-    >
-      <h3>
-        <span 
-          class="dropdown-arrow" 
-          [class.open]="signaturesDropdownOpen"
-        >
-          ▶
-        </span>
-         Signature Areas ({{ signatures.length }} total)
-      </h3>
-      <div class="actions" (click)="$event.stopPropagation()">
-        <button 
-          (click)="clearAllSignatures()" 
-          class="btn btn-clear"
-        >
-           Clear All
-        </button>
-      </div>
-    </div>
-    
-    <div 
-      class="signatures-content" 
-      [class.collapsed]="!signaturesDropdownOpen"
-    >
-      <div *ngFor="let page of getPagesWithSignatures()" class="page-group">
-        <h4 class="page-group-header">
-           Page {{ page }} 
-          <span class="page-count">
-            ({{ getSignaturesByPage().get(page)?.length }} signature(s))
-          </span>
-        </h4>
-        
-        <div class="signatures-grid">
-          <div 
-            *ngFor="let sig of getSignaturesByPage().get(page)" 
-            class="signature-card-compact" 
-            [style.border-left-color]="sig.color"
-          >
-            <div class="sig-content">
-              <div class="sig-user" [style.color]="sig.color">
-                <span class="user-icon">👤</span>
-                <strong>{{ sig.userName }}</strong>
-              </div>
-              <div class="sig-coords">
-                Position: ({{ sig.area.x | number:'1.0-0' }}, {{ sig.area.y | number:'1.0-0' }})
-                • Size: {{ sig.area.width | number:'1.0-0' }} × {{ sig.area.height | number:'1.0-0' }}
-              </div>
-            </div>
-            <button 
-              (click)="removeSignature(sig.signatureId)" 
-              class="btn-remove-compact"
-            >
-              ✕
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div> -->
+  <app-signature-list
+    [signatures]="signatures"
+    (signatureRemoved)="handleListRemove($event)"
+    (clearAllRequested)="handleClearAll()"
+  ></app-signature-list>
 
- <app-signature-list
-        [signatures]="signatures"
-        (signatureRemoved)="handleListRemove($event)"
-        (clearAllRequested)="handleClearAll()"
-      ></app-signature-list>
-  <!-- Submit Section -->
+  <!-- Submit Section - UPDATED with canSubmit() -->
   <div *ngIf="uploadedFile && users.length > 0" class="submit-section">
     <button 
       (click)="submitToAPI()" 
-      [disabled]="submitting || !documentType || !priority || signatures.length === 0"
+      [disabled]="!canSubmit()"
       class="btn btn-submit"
     >
-      <span *ngIf="!submitting"> Submit for eSign</span>
-      <span *ngIf="submitting"> Submitting...</span>
+      <span *ngIf="!submitting">🚀 Submit for eSign</span>
+      <span *ngIf="submitting">⏳ Submitting...</span>
     </button>
-    <p *ngIf="signatures.length === 0" class="submit-warning">
-       Please add at least one signature area
-    </p>
+    
+    <!-- Enhanced warning messages -->
+    <div class="submit-warnings">
+      <p *ngIf="!documentType" class="submit-warning">
+        ⚠️ Please enter Document Type
+      </p>
+      <p *ngIf="!priority" class="submit-warning">
+        ⚠️ Please select Priority
+      </p>
+      <p *ngIf="signatures.length === 0" class="submit-warning">
+        ⚠️ Please add at least one signature area
+      </p>
+      <p *ngIf="users.length > 0 && signatures.length > 0 && !canSubmit() && !submitting" class="submit-warning">
+        ⚠️ All signers must have at least one signature
+      </p>
+    </div>
   </div>
 
-  <!--  MODAL COMPONENT - Replaces all alert() calls! -->
+  <!-- MODAL COMPONENT -->
   <app-modal></app-modal>
 </div>

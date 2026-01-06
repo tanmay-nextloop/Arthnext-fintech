@@ -1,4 +1,6 @@
-// pdf-viewer.component.ts
+// pdf-viewer.component.ts - FIXED VERSION
+// Key Fix: onAllPagesToggleChange only shows confirmation when signatures actually exist
+
 import {
   Component,
   ElementRef,
@@ -279,8 +281,6 @@ export class PdfViewerComponent implements AfterViewInit {
   file = input<File | null>(null);
   selectedUser = input<User | null>(null);
   signatures = input<SignatureArea[]>([]);
-  scale = input<number>(1.5);
-  thumbnailScale = input<number>(0.3);
 
   // Output signals
   pageSelected = output<number>();
@@ -288,239 +288,208 @@ export class PdfViewerComponent implements AfterViewInit {
   signatureRemoveRequested = output<string>();
   errorOccurred = output<string>();
 
-  // Local state signals
+  // Component state
   loading = signal<boolean>(false);
   selectedPageNumber = signal<number | null>(null);
+  scale = signal<number>(1.5);
   applyToAllPages = false;
-  
-  // Private state
+
+  // PDF.js state
   private pdfDoc: any = null;
   private signCtx: CanvasRenderingContext2D | null = null;
   private currentRenderTask: any = null;
-           isDrawing = false;
+  
+  // Drawing state
+   isDrawing = false;
   private startX = 0;
   private startY = 0;
   private mouseMoveThrottle: any = null;
 
   constructor(@Inject(PLATFORM_ID) private platformId: Object) {
-    // Effect to load PDF when file changes
+    // Effect for file changes
     effect(() => {
       const currentFile = this.file();
-      if (currentFile) {
-        untracked(() => this.loadPdfFile(currentFile));
+      if (currentFile && isPlatformBrowser(this.platformId)) {
+        untracked(() => this.loadPDF(currentFile));
       }
     });
 
-    // Effect to re-render when signatures change
+    // Effect for signature changes - re-render when signatures update
     effect(() => {
       const sigs = this.signatures();
-      const pageNum = this.selectedPageNumber();
+      const pageNum = untracked(() => this.selectedPageNumber());
       if (pageNum && sigs) {
         untracked(() => this.renderSelectedPageWithAreas());
       }
     });
-
-    // Effect to reset toggle when user changes or signatures change
-    effect(() => {
-      const user = this.selectedUser();
-      const sigs = this.signatures();
-      untracked(() => {
-        if (user) {
-          this.updateAllPagesToggle();
-        } else {
-          this.applyToAllPages = false;
-        }
-      });
-    });
   }
 
-  ngAfterViewInit() {
-    if (isPlatformBrowser(this.platformId)) {
-      this.loadPdfJs();
+  ngAfterViewInit(): void {
+    if (this.signCanvas) {
+      this.signCtx = this.signCanvas.nativeElement.getContext('2d');
     }
   }
 
-  private async loadPdfJs() {
-    try {
-      const pdfjs = await import('pdfjs-dist');
-      if ((pdfjs as any).GlobalWorkerOptions) {
-        (pdfjs as any).GlobalWorkerOptions.workerSrc = '/assets/pdfjs/pdf.worker.min.js';
-      }
-    } catch (error) {
-      console.error('Error loading PDF.js:', error);
-      this.errorOccurred.emit('Failed to initialize PDF viewer.');
-    }
-  }
+  private async loadPDF(file: File) {
+    if (!isPlatformBrowser(this.platformId)) return;
 
-  private async loadPdfFile(file: File) {
     this.loading.set(true);
-    this.selectedPageNumber.set(null);
 
     try {
-      const pdfjs = await import('pdfjs-dist');
+      if (typeof pdfjsLib === 'undefined') {
+        throw new Error('PDF.js library not loaded');
+      }
+
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 
+        'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
       const arrayBuffer = await file.arrayBuffer();
-      const typedArray = new Uint8Array(arrayBuffer);
-      const loadingTask = (pdfjs as any).getDocument({ data: typedArray });
+      const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
       this.pdfDoc = await loadingTask.promise;
 
-      setTimeout(() => {
-        this.renderAllPages();
-      }, 100);
-    } catch (error: any) {
+      await this.renderThumbnails();
+      this.loading.set(false);
+    } catch (error) {
       console.error('Error loading PDF:', error);
-      this.errorOccurred.emit(`Failed to load PDF: ${error.message || 'Unknown error'}`);
-    } finally {
+      this.errorOccurred.emit('Failed to load PDF file');
       this.loading.set(false);
     }
   }
 
-  private async renderAllPages() {
+  private async renderThumbnails() {
     if (!this.pdfDoc || !this.pdfContainer) return;
 
     const container = this.pdfContainer.nativeElement;
     container.innerHTML = '';
 
-    for (let i = 1; i <= this.pdfDoc.numPages; i++) {
-      try {
-        const page = await this.pdfDoc.getPage(i);
-        const viewport = page.getViewport({ scale: this.thumbnailScale() });
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        if (!ctx) continue;
+    const numPages = this.pdfDoc.numPages;
 
-        canvas.height = viewport.height;
-        canvas.width = viewport.width;
-        canvas.style.border = '4px solid #ddd';
-        canvas.style.borderRadius = '6px';
-        canvas.style.cursor = 'pointer';
-        canvas.style.transition = 'all 0.2s ease';
-        canvas.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
-        canvas.style.maxWidth = '200px';
-        canvas.style.height = 'auto';
+    for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+      const page = await this.pdfDoc.getPage(pageNum);
+      const viewport = page.getViewport({ scale: 0.3 });
 
-        await page.render({ canvasContext: ctx, viewport }).promise;
+      const canvas = document.createElement('canvas');
+      const context = canvas.getContext('2d');
+      canvas.height = viewport.height;
+      canvas.width = viewport.width;
 
-        canvas.dataset['pageNumber'] = i.toString();
-        canvas.addEventListener('click', (e) => {
-          e.stopPropagation();
-          this.selectPage(i);
-        });
-        canvas.title = `Page ${i}`;
-
-        const wrapper = document.createElement('div');
-        wrapper.style.position = 'relative';
-        wrapper.style.display = 'inline-block';
-        wrapper.style.flexShrink = '0';
-
-        const label = document.createElement('div');
-        label.textContent = `Page ${i}`;
-        label.style.cssText = `
-          position: absolute;
-          bottom: 5px;
-          left: 50%;
-          transform: translateX(-50%);
-          background: rgba(0,0,0,0.7);
-          color: white;
-          padding: 3px 8px;
-          border-radius: 4px;
-          font-size: 11px;
-          font-weight: 600;
-          pointer-events: none;
-          white-space: nowrap;
-        `;
-
-        wrapper.appendChild(canvas);
-        wrapper.appendChild(label);
-        container.appendChild(wrapper);
-      } catch (error) {
-        console.error(`Error rendering page ${i}:`, error);
+      if (context) {
+        await page.render({ canvasContext: context, viewport }).promise;
       }
-    }
-  }
 
-  private async selectPage(pageNumber: number) {
-    if (!this.pdfDoc || !this.signCanvas || this.isDrawing) return;
+      const wrapper = document.createElement('div');
+      wrapper.style.cssText = `
+        position: relative;
+        cursor: pointer;
+        border: 2px solid #ddd;
+        border-radius: 4px;
+        padding: 5px;
+        background: white;
+        transition: all 0.2s;
+      `;
 
-    this.selectedPageNumber.set(pageNumber);
-    this.pageSelected.emit(pageNumber);
-
-    if (!this.signCtx && this.signCanvas) {
-      this.signCtx = this.signCanvas.nativeElement.getContext('2d');
-    }
-
-    if (this.pdfContainer) {
-      const allCanvases = this.pdfContainer.nativeElement.querySelectorAll('canvas');
-      allCanvases.forEach(c => {
-        c.style.borderColor = '#ddd';
-        c.style.borderWidth = '4px';
-        c.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
+      wrapper.addEventListener('mouseenter', () => {
+        wrapper.style.borderColor = '#3498db';
+        wrapper.style.transform = 'translateY(-3px)';
+        wrapper.style.boxShadow = '0 4px 8px rgba(0,0,0,0.2)';
       });
-      
-      const selectedCanvas = this.pdfContainer.nativeElement.querySelector(
-        `[data-page-number="${pageNumber}"]`
-      ) as HTMLCanvasElement;
-      
-      if (selectedCanvas) {
-        selectedCanvas.style.borderColor = '#e74c3c';
-        selectedCanvas.style.borderWidth = '5px';
-        selectedCanvas.style.boxShadow = '0 0 20px rgba(231, 76, 60, 0.6)';
-        selectedCanvas.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      }
-    }
 
-    this.updateAllPagesToggle();
-    await this.renderSelectedPageWithAreas();
+      wrapper.addEventListener('mouseleave', () => {
+        if (this.selectedPageNumber() !== pageNum) {
+          wrapper.style.borderColor = '#ddd';
+          wrapper.style.transform = 'translateY(0)';
+          wrapper.style.boxShadow = 'none';
+        }
+      });
+
+      wrapper.addEventListener('click', () => {
+        this.selectedPageNumber.set(pageNum);
+        this.pageSelected.emit(pageNum);
+        
+        // Update all thumbnails
+        Array.from(container.children).forEach((child, idx) => {
+          const element = child as HTMLElement;
+          if (idx + 1 === pageNum) {
+            element.style.borderColor = '#27ae60';
+            element.style.borderWidth = '3px';
+            element.style.boxShadow = '0 4px 12px rgba(39, 174, 96, 0.3)';
+          } else {
+            element.style.borderColor = '#ddd';
+            element.style.borderWidth = '2px';
+            element.style.boxShadow = 'none';
+          }
+        });
+
+        this.renderSelectedPageWithAreas();
+      });
+
+      const label = document.createElement('div');
+      label.textContent = `Page ${pageNum}`;
+      label.style.cssText = `
+        text-align: center;
+        margin-top: 5px;
+        font-size: 12px;
+        color: #555;
+        font-weight: 600;
+      `;
+
+      wrapper.appendChild(canvas);
+      wrapper.appendChild(label);
+      container.appendChild(wrapper);
+    }
   }
 
-  private updateAllPagesToggle() {
-    const user = this.selectedUser();
-    if (!user) {
-      this.applyToAllPages = false;
-      return;
-    }
-
-    // Check if current user has an 'all pages' signature
-    const allPagesSig = this.signatures().find(
-      s => s.userId === user.id && s.isAllPages
-    );
-    
-    this.applyToAllPages = !!allPagesSig;
-  }
-
+  /**
+   * FIXED: Only show confirmation when signatures actually exist
+   */
   onAllPagesToggleChange(checked: boolean) {
     const user = this.selectedUser();
     if (!user) return;
 
-    console.log('Toggle changed to:', checked);
-
-    if (!checked) {
-      // Switched OFF - remove all-pages signature if exists
-      const allPagesSig = this.signatures().find(
-        s => s.userId === user.id && s.isAllPages
+    if (checked) {
+      // Switching TO "all pages" mode
+      const hasSpecificPageSignatures = this.signatures().some(s => 
+        s.userId === user.id && !s.isAllPages
       );
-      
-      if (allPagesSig) {
-        console.log('Removing all-pages signature:', allPagesSig.signatureId);
-        this.signatureRemoveRequested.emit(allPagesSig.signatureId);
+
+      if (hasSpecificPageSignatures) {
+        // Only show confirmation if page-specific signatures exist
+        if (confirm('You have existing page-specific signatures. Remove them to apply signature to all pages?')) {
+          // Remove all specific page signatures for this user
+          const sigsToRemove = this.signatures().filter(s => 
+            s.userId === user.id && !s.isAllPages
+          );
+          sigsToRemove.forEach(sig => {
+            this.signatureRemoveRequested.emit(sig.signatureId);
+          });
+        } else {
+          // User cancelled, revert toggle
+          this.applyToAllPages = false;
+        }
       }
+      // If no page-specific signatures exist, just toggle on (no confirmation needed)
     } else {
-      // Switched ON - remove all individual page signatures for this user
-      const individualSigs = this.signatures().filter(
-        s => s.userId === user.id && !s.isAllPages
+      // Switching FROM "all pages" mode
+      const hasAllPagesSignature = this.signatures().some(s => 
+        s.userId === user.id && s.isAllPages
       );
-      
-      if (individualSigs.length > 0) {
-        console.log('Removing individual signatures:', individualSigs.length);
-        individualSigs.forEach(sig => {
-          this.signatureRemoveRequested.emit(sig.signatureId);
-        });
-      }
-    }
 
-    // Re-render after a short delay to allow state to update
-    setTimeout(() => {
-      this.renderSelectedPageWithAreas();
-    }, 100);
+      if (hasAllPagesSignature) {
+        // Only show confirmation if all-pages signature exists
+        if (confirm('Remove existing ALL PAGES signature?')) {
+          const sigToRemove = this.signatures().find(s => 
+            s.userId === user.id && s.isAllPages
+          );
+          if (sigToRemove) {
+            this.signatureRemoveRequested.emit(sigToRemove.signatureId);
+          }
+        } else {
+          // User cancelled, revert toggle
+          this.applyToAllPages = true;
+        }
+      }
+      // If no all-pages signature exists, just toggle off (no confirmation needed)
+    }
   }
 
   private async renderSelectedPageWithAreas() {
@@ -590,25 +559,6 @@ export class PdfViewerComponent implements AfterViewInit {
       this.errorOccurred.emit('Please select a user first!');
       return;
     }
-
-    // Check if user already has a signature on this page (or all pages)
-    const hasAllPagesSig = this.signatures().some(s => 
-      s.userId === user.id && s.isAllPages
-    );
-    
-    const hasPageSig = this.signatures().some(s => 
-      s.userId === user.id && !s.isAllPages && s.pageNumber === pageNum
-    );
-
-    // if (hasAllPagesSig) {
-    //   this.errorOccurred.emit('User already has a signature for ALL PAGES! Remove it first to add a new one.');
-    //   return;
-    // }
-
-    // if (hasPageSig) {
-    //   this.errorOccurred.emit('User already has a signature on this page! Remove it first to add a new one.');
-    //   return;
-    // }
     
     if (!this.signCanvas) return;
 
@@ -770,17 +720,9 @@ export class PdfViewerComponent implements AfterViewInit {
     return { x, y };
   }
 
-  private userHasSignatureOnPage(userId: string, pageNumber: number): boolean {
-    return this.signatures().some(s => {
-      if (s.userId !== userId) return false;
-      if (s.isAllPages) return true;
-      return s.pageNumber === pageNumber;
-    });
-  }
-
   private checkOverlapWithOthers(newArea: Rectangle, pageNumber: number, currentUserId: string): boolean {
     const pageSignatures = this.signatures().filter(s => {
-      if (s.userId === currentUserId) return false; // Ignore current user
+      if (s.userId === currentUserId) return false;
       if (s.isAllPages) return true;
       return s.pageNumber === pageNumber;
     });
