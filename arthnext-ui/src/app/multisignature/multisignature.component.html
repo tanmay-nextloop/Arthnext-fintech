@@ -59,9 +59,14 @@
         placeholder="Full name"
         class="user-input"
       />
+      <!-- UPDATED: Aadhar input with maxlength and input event handler -->
       <input
         [(ngModel)]="newUserAadhar"
-        placeholder="Aadhar Number"
+        (input)="onAadharInput($event)"
+        placeholder="Aadhar Number (12 digits)"
+        type="text"
+        inputmode="numeric"
+        maxlength="12"
         class="user-input"
       />
       <div class="form-actions">
@@ -141,7 +146,7 @@
     (clearAllRequested)="handleClearAll()"
   ></app-signature-list>
 
-  <!-- Submit Section - UPDATED with canSubmit() -->
+  <!-- Submit Section -->
   <div *ngIf="uploadedFile && users.length > 0" class="submit-section">
     <button 
       (click)="submitToAPI()" 

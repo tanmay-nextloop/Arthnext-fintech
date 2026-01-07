@@ -1,5 +1,5 @@
-// pdf-viewer.component.ts - FIXED VERSION
-// Key Fix: onAllPagesToggleChange only shows confirmation when signatures actually exist
+// pdf-viewer.component.ts - FINAL VERSION WITH ALL CORRECTIONS
+// Changes: Removed jump-to-page, dotted border only (no fill), no name while dragging
 
 import {
   Component,
@@ -49,6 +49,15 @@ export interface User {
   imports: [CommonModule, FormsModule],
   template: `
     <div class="pdf-viewer-container">
+      <!-- Page Counter -->
+      <div *ngIf="pdfDoc" class="pdf-info">
+        <span class="pdf-icon">📄</span>
+        <strong>PDF Pages:</strong> {{ pdfDoc.numPages }}
+        <span *ngIf="selectedPageNumber()" class="current-page">
+          | Currently viewing: Page {{ selectedPageNumber() }}
+        </span>
+      </div>
+
       <!-- All Pages Toggle -->
       <div *ngIf="selectedUser() && selectedPageNumber()" class="all-pages-toggle">
         <label class="toggle-label">
@@ -62,7 +71,7 @@ export interface User {
             />
             <span class="toggle-text">
               <span class="toggle-icon">🌐</span>
-              Apply signature to ALL pages
+              Apply signature to ALL {{ pdfDoc?.numPages || 0 }} pages
             </span>
           </div>
           <span class="toggle-hint">
@@ -72,11 +81,20 @@ export interface User {
         </label>
       </div>
 
-      <!-- PDF Thumbnails -->
+      <!-- PDF Thumbnails (NO HEADER - REMOVED) -->
       <div class="pdf-thumbnails" #pdfContainer></div>
 
       <!-- Main Canvas Container with Overlay -->
       <div class="canvas-wrapper" [class.hidden]="!selectedPageNumber()">
+        <div class="canvas-header">
+          <span class="page-indicator">
+            📄 Page {{ selectedPageNumber() }} of {{ pdfDoc?.numPages || 0 }}
+          </span>
+          <span class="draw-instruction">
+            ✏️ Click and drag to draw signature area
+          </span>
+        </div>
+        
         <canvas
           #signCanvas
           class="sign-canvas"
@@ -101,12 +119,37 @@ export interface User {
         </div>
       </div>
 
-      <div *ngIf="loading()" class="loading">Loading PDF...</div>
+      <div *ngIf="loading()" class="loading">
+        <div class="spinner"></div>
+        <p>Loading PDF...</p>
+      </div>
     </div>
   `,
   styles: [`
     .pdf-viewer-container {
       width: 100%;
+    }
+
+    .pdf-info {
+      background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+      padding: 12px 20px;
+      border-radius: 8px;
+      margin-bottom: 15px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 14px;
+      color: #2c3e50;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .pdf-icon {
+      font-size: 20px;
+    }
+
+    .current-page {
+      color: #27ae60;
+      font-weight: 600;
     }
 
     .all-pages-toggle {
@@ -166,13 +209,13 @@ export interface User {
     }
 
     .pdf-thumbnails {
-      display: flex;
-      flex-wrap: wrap;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
       gap: 15px;
       padding: 15px;
       background: #f8f9fa;
       border-radius: 8px;
-      max-height: 400px;
+      max-height: 500px;
       overflow-y: auto;
       overflow-x: hidden;
       scroll-behavior: smooth;
@@ -180,7 +223,7 @@ export interface User {
     }
 
     .pdf-thumbnails::-webkit-scrollbar {
-      width: 8px;
+      width: 10px;
     }
 
     .pdf-thumbnails::-webkit-scrollbar-track {
@@ -203,18 +246,38 @@ export interface User {
       margin-bottom: 20px;
       max-width: 100%;
       overflow: hidden;
+      border: 2px solid #34495e;
+      border-radius: 8px;
+      background: white;
     }
 
     .canvas-wrapper.hidden {
       display: none;
     }
 
+    .canvas-header {
+      background: #34495e;
+      color: white;
+      padding: 10px 15px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 14px;
+    }
+
+    .page-indicator {
+      font-weight: 600;
+    }
+
+    .draw-instruction {
+      font-size: 12px;
+      color: #ecf0f1;
+      font-style: italic;
+    }
+
     .sign-canvas {
       display: block;
-      border: 3px solid #2c3e50;
       cursor: crosshair;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-      border-radius: 4px;
       max-width: 100%;
       height: auto;
       background: white;
@@ -222,10 +285,10 @@ export interface User {
 
     .buttons-overlay {
       position: absolute;
-      top: 0;
+      top: 44px; /* Account for canvas header */
       left: 0;
       width: 100%;
-      height: 100%;
+      height: calc(100% - 44px);
       pointer-events: none;
     }
 
@@ -263,13 +326,28 @@ export interface User {
     }
 
     .loading {
-      padding: 20px;
+      padding: 40px 20px;
       text-align: center;
       font-size: 18px;
       color: #3498db;
       background: #ecf0f1;
       border-radius: 8px;
       margin: 20px 0;
+    }
+
+    .spinner {
+      border: 4px solid #f3f3f3;
+      border-top: 4px solid #3498db;
+      border-radius: 50%;
+      width: 50px;
+      height: 50px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 20px auto;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
     }
   `]
 })
@@ -295,12 +373,12 @@ export class PdfViewerComponent implements AfterViewInit {
   applyToAllPages = false;
 
   // PDF.js state
-  private pdfDoc: any = null;
+  pdfDoc: any = null;
   private signCtx: CanvasRenderingContext2D | null = null;
   private currentRenderTask: any = null;
   
   // Drawing state
-   isDrawing = false;
+  isDrawing = false;
   private startX = 0;
   private startY = 0;
   private mouseMoveThrottle: any = null;
@@ -314,7 +392,7 @@ export class PdfViewerComponent implements AfterViewInit {
       }
     });
 
-    // Effect for signature changes - re-render when signatures update
+    // Effect for signature changes
     effect(() => {
       const sigs = this.signatures();
       const pageNum = untracked(() => this.selectedPageNumber());
@@ -334,6 +412,8 @@ export class PdfViewerComponent implements AfterViewInit {
     if (!isPlatformBrowser(this.platformId)) return;
 
     this.loading.set(true);
+    this.pdfDoc = null;
+    this.selectedPageNumber.set(null);
 
     try {
       if (typeof pdfjsLib === 'undefined') {
@@ -356,6 +436,32 @@ export class PdfViewerComponent implements AfterViewInit {
     }
   }
 
+  private selectPage(pageNum: number) {
+    this.selectedPageNumber.set(pageNum);
+    this.pageSelected.emit(pageNum);
+    
+    // Update thumbnail borders
+    const container = this.pdfContainer?.nativeElement;
+    if (container) {
+      Array.from(container.children).forEach((child, idx) => {
+        const element = child as HTMLElement;
+        if (idx + 1 === pageNum) {
+          element.style.borderColor = '#27ae60';
+          element.style.borderWidth = '3px';
+          element.style.boxShadow = '0 4px 12px rgba(39, 174, 96, 0.4)';
+          element.style.transform = 'scale(1.05)';
+        } else {
+          element.style.borderColor = '#ddd';
+          element.style.borderWidth = '2px';
+          element.style.boxShadow = 'none';
+          element.style.transform = 'scale(1)';
+        }
+      });
+    }
+
+    this.renderSelectedPageWithAreas();
+  }
+
   private async renderThumbnails() {
     if (!this.pdfDoc || !this.pdfContainer) return;
 
@@ -366,7 +472,7 @@ export class PdfViewerComponent implements AfterViewInit {
 
     for (let pageNum = 1; pageNum <= numPages; pageNum++) {
       const page = await this.pdfDoc.getPage(pageNum);
-      const viewport = page.getViewport({ scale: 0.3 });
+      const viewport = page.getViewport({ scale: 0.25 });
 
       const canvas = document.createElement('canvas');
       const context = canvas.getContext('2d');
@@ -382,53 +488,39 @@ export class PdfViewerComponent implements AfterViewInit {
         position: relative;
         cursor: pointer;
         border: 2px solid #ddd;
-        border-radius: 4px;
-        padding: 5px;
+        border-radius: 6px;
+        padding: 8px;
         background: white;
-        transition: all 0.2s;
+        transition: all 0.3s;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
       `;
 
       wrapper.addEventListener('mouseenter', () => {
-        wrapper.style.borderColor = '#3498db';
-        wrapper.style.transform = 'translateY(-3px)';
-        wrapper.style.boxShadow = '0 4px 8px rgba(0,0,0,0.2)';
+        if (this.selectedPageNumber() !== pageNum) {
+          wrapper.style.borderColor = '#3498db';
+          wrapper.style.transform = 'translateY(-3px) scale(1.02)';
+          wrapper.style.boxShadow = '0 4px 8px rgba(52, 152, 219, 0.3)';
+        }
       });
 
       wrapper.addEventListener('mouseleave', () => {
         if (this.selectedPageNumber() !== pageNum) {
           wrapper.style.borderColor = '#ddd';
-          wrapper.style.transform = 'translateY(0)';
-          wrapper.style.boxShadow = 'none';
+          wrapper.style.transform = 'scale(1)';
+          wrapper.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
         }
       });
 
       wrapper.addEventListener('click', () => {
-        this.selectedPageNumber.set(pageNum);
-        this.pageSelected.emit(pageNum);
-        
-        // Update all thumbnails
-        Array.from(container.children).forEach((child, idx) => {
-          const element = child as HTMLElement;
-          if (idx + 1 === pageNum) {
-            element.style.borderColor = '#27ae60';
-            element.style.borderWidth = '3px';
-            element.style.boxShadow = '0 4px 12px rgba(39, 174, 96, 0.3)';
-          } else {
-            element.style.borderColor = '#ddd';
-            element.style.borderWidth = '2px';
-            element.style.boxShadow = 'none';
-          }
-        });
-
-        this.renderSelectedPageWithAreas();
+        this.selectPage(pageNum);
       });
 
       const label = document.createElement('div');
       label.textContent = `Page ${pageNum}`;
       label.style.cssText = `
         text-align: center;
-        margin-top: 5px;
-        font-size: 12px;
+        margin-top: 8px;
+        font-size: 13px;
         color: #555;
         font-weight: 600;
       `;
@@ -439,23 +531,17 @@ export class PdfViewerComponent implements AfterViewInit {
     }
   }
 
-  /**
-   * FIXED: Only show confirmation when signatures actually exist
-   */
   onAllPagesToggleChange(checked: boolean) {
     const user = this.selectedUser();
     if (!user) return;
 
     if (checked) {
-      // Switching TO "all pages" mode
       const hasSpecificPageSignatures = this.signatures().some(s => 
         s.userId === user.id && !s.isAllPages
       );
 
       if (hasSpecificPageSignatures) {
-        // Only show confirmation if page-specific signatures exist
-        if (confirm('You have existing page-specific signatures. Remove them to apply signature to all pages?')) {
-          // Remove all specific page signatures for this user
+        if (confirm(`Remove existing page-specific signatures for ${user.name}?`)) {
           const sigsToRemove = this.signatures().filter(s => 
             s.userId === user.id && !s.isAllPages
           );
@@ -463,20 +549,16 @@ export class PdfViewerComponent implements AfterViewInit {
             this.signatureRemoveRequested.emit(sig.signatureId);
           });
         } else {
-          // User cancelled, revert toggle
           this.applyToAllPages = false;
         }
       }
-      // If no page-specific signatures exist, just toggle on (no confirmation needed)
     } else {
-      // Switching FROM "all pages" mode
       const hasAllPagesSignature = this.signatures().some(s => 
         s.userId === user.id && s.isAllPages
       );
 
       if (hasAllPagesSignature) {
-        // Only show confirmation if all-pages signature exists
-        if (confirm('Remove existing ALL PAGES signature?')) {
+        if (confirm(`Remove ALL PAGES signature for ${user.name}?`)) {
           const sigToRemove = this.signatures().find(s => 
             s.userId === user.id && s.isAllPages
           );
@@ -484,11 +566,9 @@ export class PdfViewerComponent implements AfterViewInit {
             this.signatureRemoveRequested.emit(sigToRemove.signatureId);
           }
         } else {
-          // User cancelled, revert toggle
           this.applyToAllPages = true;
         }
       }
-      // If no all-pages signature exists, just toggle off (no confirmation needed)
     }
   }
 
@@ -526,14 +606,14 @@ export class PdfViewerComponent implements AfterViewInit {
   private drawRectangle(rect: Rectangle, color: string, label: string, isAllPages?: boolean) {
     if (!this.signCtx) return;
 
+    // CORRECTED: Dotted border ONLY - NO FILL AT ALL
     this.signCtx.strokeStyle = color;
     this.signCtx.lineWidth = 3;
-    this.signCtx.setLineDash([5, 5]);
+    this.signCtx.setLineDash([8, 4]);
     this.signCtx.strokeRect(rect.x, rect.y, rect.width, rect.height);
-    this.signCtx.fillStyle = color.replace(')', ', 0.1)').replace('rgb', 'rgba');
-    this.signCtx.fillRect(rect.x, rect.y, rect.width, rect.height);
     this.signCtx.setLineDash([]);
 
+    // Label with user name
     const displayLabel = isAllPages ? `${label} (ALL PAGES)` : label;
 
     this.signCtx.fillStyle = color;
@@ -603,7 +683,7 @@ export class PdfViewerComponent implements AfterViewInit {
         try {
           await this.currentRenderTask.cancel();
         } catch (e) {
-          // Ignore cancellation errors
+          // Ignore
         }
         this.currentRenderTask = null;
       }
@@ -621,14 +701,15 @@ export class PdfViewerComponent implements AfterViewInit {
         this.drawRectangle(sig.area, sig.color, sig.userName, sig.isAllPages);
       });
 
+      // CORRECTED: During drawing - ONLY dotted border, NO FILL, NO NAME
       const currentColor = user.color;
       this.signCtx.strokeStyle = currentColor;
       this.signCtx.lineWidth = 3;
-      this.signCtx.setLineDash([5, 5]);
+      this.signCtx.setLineDash([8, 4]);
       this.signCtx.strokeRect(this.startX, this.startY, width, height);
-      this.signCtx.fillStyle = currentColor.replace(')', ', 0.1)').replace('rgb', 'rgba');
-      this.signCtx.fillRect(this.startX, this.startY, width, height);
       this.signCtx.setLineDash([]);
+      
+      // NO FILL, NO NAME - Just the dotted border
     } catch (error: any) {
       if (error.name !== 'RenderingCancelledException') {
         console.error('Error during rectangle drawing:', error);
@@ -661,7 +742,6 @@ export class PdfViewerComponent implements AfterViewInit {
     this.isDrawing = false;
 
     if (area.width > 20 && area.height > 20) {
-      // Check overlap with other users' signatures
       if (this.checkOverlapWithOthers(area, pageNum, user.id)) {
         this.errorOccurred.emit('Signature area overlaps with another user\'s signature!');
         this.renderSelectedPageWithAreas();

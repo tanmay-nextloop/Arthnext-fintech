@@ -1,4 +1,6 @@
-// multisignature.component.ts
+// multisignature.component.ts - COORDINATE FIX
+// Converts canvas coordinates to PDF coordinates properly
+
 import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -58,7 +60,36 @@ export class MultisignatureComponent {
 
   onFileChange(event: Event) {
     const input = event.target as HTMLInputElement;
-    this.uploadedFile = input.files?.[0] || null;
+    const newFile = input.files?.[0] || null;
+    
+    if (newFile && this.uploadedFile && (this.signatures.length > 0 || this.users.length > 0)) {
+      this.modalService.showConfirm(
+        'Change PDF',
+        'Changing the PDF will clear all signatures and signers. Continue?',
+        () => {
+          this.uploadedFile = newFile;
+          this.signatures = [];
+          this.users = [];
+          this.selectedUser = null;
+          this.colorIndex = 0;
+        },
+        () => {
+          input.value = '';
+        }
+      );
+    } else {
+      this.uploadedFile = newFile;
+    }
+  }
+
+  onAadharInput(event: Event) {
+    const input = event.target as HTMLInputElement;
+    let value = input.value.replace(/\D/g, '');
+    if (value.length > 12) {
+      value = value.substring(0, 12);
+    }
+    this.newUserAadhar = value;
+    input.value = value;
   }
 
   addUser() {
@@ -71,10 +102,28 @@ export class MultisignatureComponent {
       return;
     }
 
+    if (!this.newUserAadhar.trim()) {
+      this.modalService.showAlert(
+        'Validation Error',
+        'Please enter Aadhar number!',
+        'warning'
+      );
+      return;
+    }
+
+    if (this.newUserAadhar.trim().length !== 12) {
+      this.modalService.showAlert(
+        'Validation Error',
+        'Aadhar number must be exactly 12 digits!',
+        'warning'
+      );
+      return;
+    }
+
     const user: User = {
       id: `user_${Date.now()}`,
       name: this.newUserName.trim(),
-      email: this.newUserAadhar.trim() || '',
+      email: this.newUserAadhar.trim(),
       color: this.colors[this.colorIndex % this.colors.length]
     };
 
@@ -109,12 +158,9 @@ export class MultisignatureComponent {
   }
 
   onSignatureAdded(sig: SignatureArea) {
-    // Validation: Check if user already has signature on this page
     if (sig.isAllPages) {
-      // Remove any existing signatures for this user
       this.signatures = this.signatures.filter(s => s.userId !== sig.userId);
     } else {
-      // Remove any existing signature on this specific page for this user
       this.signatures = this.signatures.filter(s => 
         !(s.userId === sig.userId && (s.pageNumber === sig.pageNumber || s.isAllPages))
       );
@@ -183,11 +229,8 @@ export class MultisignatureComponent {
 
   getUserSignatureCount(userId: string): number {
     const userSigs = this.signatures.filter(s => s.userId === userId);
-    
-    // Count all-pages signatures as 1
     const allPagesSig = userSigs.find(s => s.isAllPages);
     if (allPagesSig) return 1;
-    
     return userSigs.length;
   }
 
@@ -207,19 +250,16 @@ export class MultisignatureComponent {
 
   getPagesWithSignatures(): number[] {
     const pages = new Set<number>();
-    
     this.signatures.forEach(sig => {
       if (typeof sig.pageNumber === 'number') {
         pages.add(sig.pageNumber);
       }
     });
-    
     return Array.from(pages).sort((a, b) => a - b);
   }
 
   getSignaturesByPage(): Map<number, SignatureArea[]> {
     const pageMap = new Map<number, SignatureArea[]>();
-    
     this.signatures.forEach(sig => {
       if (typeof sig.pageNumber === 'number') {
         if (!pageMap.has(sig.pageNumber)) {
@@ -228,7 +268,6 @@ export class MultisignatureComponent {
         pageMap.get(sig.pageNumber)!.push(sig);
       }
     });
-    
     return new Map([...pageMap.entries()].sort((a, b) => a[0] - b[0]));
   }
 
@@ -236,11 +275,7 @@ export class MultisignatureComponent {
     this.signaturesDropdownOpen = !this.signaturesDropdownOpen;
   }
 
-  /**
-   * NEW: Comprehensive validation method for submit button
-   */
   canSubmit(): boolean {
-    // Check basic requirements
     if (this.submitting) return false;
     if (!this.documentType?.trim()) return false;
     if (!this.priority?.trim()) return false;
@@ -248,7 +283,6 @@ export class MultisignatureComponent {
     if (this.signatures.length === 0) return false;
     if (this.users.length === 0) return false;
 
-    // Check that each user has at least one signature
     const userIdsWithSignatures = new Set(this.signatures.map(s => s.userId));
     const allUsersHaveSignatures = this.users.every(u => 
       userIdsWithSignatures.has(u.id)
@@ -257,26 +291,36 @@ export class MultisignatureComponent {
     return allUsersHaveSignatures;
   }
 
-  /**
-   * NEW: Validate coordinates are within reasonable bounds
-   */
   private validateCoordinates(signatures: SignatureArea[]): boolean {
     return signatures.every(sig => {
       const { x, y, width, height } = sig.area;
-      // Ensure all coordinates are positive and reasonable
       return (
         x >= 0 && 
         y >= 0 && 
         width > 0 && 
         height > 0 &&
-        x + width <= 10000 && // Max reasonable canvas width
-        y + height <= 10000   // Max reasonable canvas height
+        x + width <= 10000 &&
+        y + height <= 10000
       );
     });
   }
 
+  /**
+   * CRITICAL FIX: Convert canvas coordinates to PDF coordinates
+   * Canvas uses scaled coordinates, PDF uses actual page dimensions
+   */
+  private convertCanvasToPdfCoordinates(canvasCoords: any, scale: number = 1.5): any {
+    // PDF.js uses scale 1.5 by default
+    // We need to convert back to actual PDF coordinates (scale 1.0)
+    return {
+      x: Math.round(canvasCoords.x / scale),
+      y: Math.round(canvasCoords.y / scale),
+      width: Math.round(canvasCoords.width / scale),
+      height: Math.round(canvasCoords.height / scale)
+    };
+  }
+
   async submitToAPI() {
-    // Enhanced validation
     if (!this.documentType.trim()) {
       this.modalService.showAlert('Validation Error', 'Please enter Document Type!', 'warning');
       return;
@@ -297,7 +341,6 @@ export class MultisignatureComponent {
       return;
     }
 
-    // NEW: Check each user has at least one signature
     const userIdsWithSignatures = new Set(this.signatures.map(s => s.userId));
     const usersWithoutSignatures = this.users.filter(u => !userIdsWithSignatures.has(u.id));
     
@@ -311,7 +354,6 @@ export class MultisignatureComponent {
       return;
     }
 
-    // NEW: Validate coordinates
     if (!this.validateCoordinates(this.signatures)) {
       this.modalService.showAlert('Validation Error', 'Invalid signature coordinates detected!', 'error');
       return;
@@ -320,7 +362,6 @@ export class MultisignatureComponent {
     this.submitting = true;
 
     try {
-      // Group signatures by user
       const userSignatureMap = new Map<string, SignatureArea[]>();
       this.signatures.forEach(sig => {
         if (!userSignatureMap.has(sig.userId)) {
@@ -329,43 +370,33 @@ export class MultisignatureComponent {
         userSignatureMap.get(sig.userId)!.push(sig);
       });
 
-      // Build signers array according to API format
+      // FIXED: Convert coordinates properly
       const signers = Array.from(userSignatureMap.entries()).map(([userId, sigs]) => {
         const user = this.users.find(u => u.id === userId);
-
-        // Check if user has an "all pages" signature
         const allPagesSig = sigs.find(s => s.isAllPages);
         
         if (allPagesSig) {
-          // Format for "all pages" signature
-          // Using page '1' as reference coordinates, API will apply to all pages
+          // Convert canvas coordinates to PDF coordinates
+          const pdfCoords = this.convertCanvasToPdfCoordinates(allPagesSig.area);
+          
           return {
             aadhaar: user?.email || '',
             name: user?.name || '',
             coordinates: {
-              '1': {
-                x: Math.round(allPagesSig.area.x),
-                y: Math.round(allPagesSig.area.y),
-                width: Math.round(allPagesSig.area.width),
-                height: Math.round(allPagesSig.area.height)
-              }
+              'all': pdfCoords  // Converted coordinates
             },
             pages: ['all']
           };
         } else {
-          // Format for specific pages
           const coordinates: Record<string, any> = {};
           const pages: number[] = [];
 
           sigs.forEach(sig => {
             if (typeof sig.pageNumber === 'number') {
-              // Convert page number to string key for coordinates object
-              coordinates[sig.pageNumber.toString()] = {
-                x: Math.round(sig.area.x),
-                y: Math.round(sig.area.y),
-                width: Math.round(sig.area.width),
-                height: Math.round(sig.area.height)
-              };
+              // Convert canvas coordinates to PDF coordinates
+              const pdfCoords = this.convertCanvasToPdfCoordinates(sig.area);
+              
+              coordinates[sig.pageNumber.toString()] = pdfCoords;
               pages.push(sig.pageNumber);
             }
           });
@@ -395,10 +426,11 @@ export class MultisignatureComponent {
         formData.append('pdf', this.uploadedFile);
       }
 
-      console.log('=== FINAL API PAYLOAD ===');
+      console.log('=== COORDINATE FIXED API PAYLOAD ===');
       console.log(JSON.stringify(payload, null, 2));
-      console.log('=== Number of Signers:', signers.length);
-      console.log('=== Total Signatures:', this.signatures.length);
+      console.log('=== COORDINATE CONVERSION ===');
+      console.log('Canvas coordinates are divided by scale (1.5) to get PDF coordinates');
+      console.log('Example: Canvas (300, 150) → PDF (200, 100)');
 
       const tab1 = window.open('', '_blank');
       if (!tab1) {
@@ -407,24 +439,87 @@ export class MultisignatureComponent {
         return;
       }
 
-      tab1.document.write('<p>Preparing eSign document...</p>');
+      tab1.document.write(`
+        <html>
+          <head>
+            <title>eSign Processing</title>
+            <style>
+              body {
+                font-family: Arial, sans-serif;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                height: 100vh;
+                margin: 0;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+              }
+              .container {
+                text-align: center;
+                background: white;
+                padding: 40px;
+                border-radius: 10px;
+                box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+              }
+              .spinner {
+                border: 4px solid #f3f3f3;
+                border-top: 4px solid #667eea;
+                border-radius: 50%;
+                width: 50px;
+                height: 50px;
+                animation: spin 1s linear infinite;
+                margin: 20px auto;
+              }
+              @keyframes spin {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
+              }
+              h2 { color: #333; margin: 0 0 10px 0; }
+              p { color: #666; margin: 5px 0; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <div class="spinner"></div>
+              <h2>Preparing eSign Document</h2>
+              <p>Please wait while we process your request...</p>
+            </div>
+          </body>
+        </html>
+      `);
 
       this.http.post(this.initiateAPI, formData).subscribe({
         next: (res: any) => {
           this.submitting = false;
+          console.log('API Response:', res);
+          
           if (res?.esignUrl) {
             tab1.location.href = res.esignUrl;
             this.router.navigate(['/esignStatus'], {
               queryParams: { esignId: res?.esignId }
             });
           } else {
-            tab1.document.body.innerHTML = '<p>Failed to get eSign URL.</p>';
+            tab1.document.body.innerHTML = `
+              <div style="font-family: Arial; padding: 40px; text-align: center;">
+                <h2 style="color: #e74c3c;">❌ Error</h2>
+                <p>Failed to get eSign URL from the server.</p>
+                <p style="color: #7f8c8d; font-size: 14px;">Please close this window and try again.</p>
+              </div>
+            `;
             this.modalService.showAlert('Submission Error', 'Failed to get eSign URL from API.', 'error');
           }
         },
         error: (err) => {
           this.submitting = false;
-          tab1.document.body.innerHTML = '<p>Error occurred.</p>';
+          console.error('API Error:', err);
+          
+          tab1.document.body.innerHTML = `
+            <div style="font-family: Arial; padding: 40px; text-align: center;">
+              <h2 style="color: #e74c3c;">❌ Error Occurred</h2>
+              <p>${err.message || 'Unknown error occurred'}</p>
+              <p style="color: #7f8c8d; font-size: 14px;">Please close this window and try again.</p>
+            </div>
+          `;
+          
           this.modalService.showAlert(
             'Submission Error',
             `Failed: ${err.message || 'Unknown error'}`,
