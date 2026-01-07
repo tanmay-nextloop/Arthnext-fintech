@@ -376,12 +376,15 @@ export class PdfViewerComponent implements AfterViewInit {
   pdfDoc: any = null;
   private signCtx: CanvasRenderingContext2D | null = null;
   private currentRenderTask: any = null;
-  
+
   // Drawing state
   isDrawing = false;
   private startX = 0;
   private startY = 0;
   private mouseMoveThrottle: any = null;
+
+  private readonly MAX_SIGNATURE_WIDTH = 300;
+  private readonly MAX_SIGNATURE_HEIGHT = 150;
 
   constructor(@Inject(PLATFORM_ID) private platformId: Object) {
     // Effect for file changes
@@ -420,7 +423,7 @@ export class PdfViewerComponent implements AfterViewInit {
         throw new Error('PDF.js library not loaded');
       }
 
-      pdfjsLib.GlobalWorkerOptions.workerSrc = 
+      pdfjsLib.GlobalWorkerOptions.workerSrc =
         'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
       const arrayBuffer = await file.arrayBuffer();
@@ -439,7 +442,7 @@ export class PdfViewerComponent implements AfterViewInit {
   private selectPage(pageNum: number) {
     this.selectedPageNumber.set(pageNum);
     this.pageSelected.emit(pageNum);
-    
+
     // Update thumbnail borders
     const container = this.pdfContainer?.nativeElement;
     if (container) {
@@ -536,13 +539,13 @@ export class PdfViewerComponent implements AfterViewInit {
     if (!user) return;
 
     if (checked) {
-      const hasSpecificPageSignatures = this.signatures().some(s => 
+      const hasSpecificPageSignatures = this.signatures().some(s =>
         s.userId === user.id && !s.isAllPages
       );
 
       if (hasSpecificPageSignatures) {
         if (confirm(`Remove existing page-specific signatures for ${user.name}?`)) {
-          const sigsToRemove = this.signatures().filter(s => 
+          const sigsToRemove = this.signatures().filter(s =>
             s.userId === user.id && !s.isAllPages
           );
           sigsToRemove.forEach(sig => {
@@ -553,13 +556,13 @@ export class PdfViewerComponent implements AfterViewInit {
         }
       }
     } else {
-      const hasAllPagesSignature = this.signatures().some(s => 
+      const hasAllPagesSignature = this.signatures().some(s =>
         s.userId === user.id && s.isAllPages
       );
 
       if (hasAllPagesSignature) {
         if (confirm(`Remove ALL PAGES signature for ${user.name}?`)) {
-          const sigToRemove = this.signatures().find(s => 
+          const sigToRemove = this.signatures().find(s =>
             s.userId === user.id && s.isAllPages
           );
           if (sigToRemove) {
@@ -633,13 +636,13 @@ export class PdfViewerComponent implements AfterViewInit {
       this.errorOccurred.emit('Please select a page first!');
       return;
     }
-    
+
     const user = this.selectedUser();
     if (!user) {
       this.errorOccurred.emit('Please select a user first!');
       return;
     }
-    
+
     if (!this.signCanvas) return;
 
     const canvas = this.signCanvas.nativeElement;
@@ -656,7 +659,7 @@ export class PdfViewerComponent implements AfterViewInit {
   async onMouseMove(event: MouseEvent) {
     const pageNum = this.selectedPageNumber();
     const user = this.selectedUser();
-    
+
     if (!this.isDrawing || !pageNum || !this.signCtx || !user || !this.signCanvas) return;
 
     if (this.mouseMoveThrottle) {
@@ -675,8 +678,12 @@ export class PdfViewerComponent implements AfterViewInit {
 
     const mouseX = (event.clientX - rect.left) * scaleX;
     const mouseY = (event.clientY - rect.top) * scaleY;
-    const width = mouseX - this.startX;
-    const height = mouseY - this.startY;
+    // const width = mouseX - this.startX;
+    // const height = mouseY - this.startY;
+
+    // 🔒 Enforce max size while dragging
+    const width = Math.sign(mouseX - this.startX) * Math.min(Math.abs(mouseX - this.startX), this.MAX_SIGNATURE_WIDTH);
+    const height = Math.sign(mouseY - this.startY) * Math.min(Math.abs(mouseY - this.startY), this.MAX_SIGNATURE_HEIGHT);
 
     try {
       if (this.currentRenderTask) {
@@ -690,7 +697,7 @@ export class PdfViewerComponent implements AfterViewInit {
 
       const page = await this.pdfDoc.getPage(pageNum);
       const viewport = page.getViewport({ scale: this.scale() });
-      
+
       this.signCtx.clearRect(0, 0, canvas.width, canvas.height);
 
       const renderTask = page.render({ canvasContext: this.signCtx, viewport });
@@ -708,7 +715,7 @@ export class PdfViewerComponent implements AfterViewInit {
       this.signCtx.setLineDash([8, 4]);
       this.signCtx.strokeRect(this.startX, this.startY, width, height);
       this.signCtx.setLineDash([]);
-      
+
       // NO FILL, NO NAME - Just the dotted border
     } catch (error: any) {
       if (error.name !== 'RenderingCancelledException') {
@@ -720,7 +727,7 @@ export class PdfViewerComponent implements AfterViewInit {
   onMouseUp(event: MouseEvent) {
     const pageNum = this.selectedPageNumber();
     const user = this.selectedUser();
-    
+
     if (!this.isDrawing || !pageNum || !user || !this.signCanvas) return;
 
     const canvas = this.signCanvas.nativeElement;
@@ -740,6 +747,16 @@ export class PdfViewerComponent implements AfterViewInit {
     };
 
     this.isDrawing = false;
+    if (
+      area.width > this.MAX_SIGNATURE_WIDTH ||
+      area.height > this.MAX_SIGNATURE_HEIGHT
+    ) {
+      this.errorOccurred.emit(
+        `Signature area exceeds maximum size (${this.MAX_SIGNATURE_WIDTH} × ${this.MAX_SIGNATURE_HEIGHT})`
+      );
+      this.renderSelectedPageWithAreas();
+      return;
+    }
 
     if (area.width > 20 && area.height > 20) {
       if (this.checkOverlapWithOthers(area, pageNum, user.id)) {
@@ -778,7 +795,7 @@ export class PdfViewerComponent implements AfterViewInit {
   getPageSignatures(): SignatureArea[] {
     const pageNum = this.selectedPageNumber();
     if (!pageNum) return [];
-    
+
     return this.signatures().filter(s => {
       if (s.isAllPages) return true;
       return s.pageNumber === pageNum;
@@ -787,16 +804,16 @@ export class PdfViewerComponent implements AfterViewInit {
 
   getRemoveButtonPosition(sig: SignatureArea): { x: number; y: number } {
     if (!this.signCanvas) return { x: 0, y: 0 };
-    
+
     const canvas = this.signCanvas.nativeElement;
     const rect = canvas.getBoundingClientRect();
-    
+
     const scaleX = rect.width / canvas.width;
     const scaleY = rect.height / canvas.height;
-    
+
     const x = (sig.area.x + sig.area.width) * scaleX;
     const y = sig.area.y * scaleY;
-    
+
     return { x, y };
   }
 
